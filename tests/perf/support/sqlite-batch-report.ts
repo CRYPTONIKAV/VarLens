@@ -272,7 +272,7 @@ export function renderMarkdown(report: BatchReport): string {
     '| step | s |',
     '|---|---:|',
     ...report.diagnostics.map(
-      (row) => `| ${row.step.replace(/\|/g, '\\|')} | ${seconds(row.ms)} |`
+      (row) => `| ${row.step.replace(/[\\|]/g, '\\$&')} | ${seconds(row.ms)} |`
     ),
     ''
   ]
