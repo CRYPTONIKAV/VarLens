@@ -8,10 +8,13 @@
 
 import { mdiFilterVariant } from '@mdi/js'
 import {
-  FILTER_COLUMNS,
+  COHORT_ONLY_COLUMNS,
   findColumn,
   getColumnSuggestions,
-  getCommonValues
+  getCommonValues,
+  isColumnInScope,
+  type FilterColumnDef,
+  type FilterScope
 } from './column-registry'
 
 const MAX_SUGGESTIONS = 10
@@ -47,6 +50,48 @@ const OPERATOR_LABELS: Record<string, string> = {
   $: 'Ends with',
   'is:null': 'Is empty/missing',
   'is:notnull': 'Has value'
+}
+
+/** Which view the query filters: the cohort summary holds no per-case fields. */
+export type SuggestionScope = FilterScope
+
+function fieldsMatching(partial: string, scope: SuggestionScope): FilterColumnDef[] {
+  if (scope === 'case') return getColumnSuggestions(partial)
+  const lower = partial.toLowerCase()
+  const cohortOnly = COHORT_ONLY_COLUMNS.filter(
+    (col) => col.key.startsWith(lower) || col.label.toLowerCase().startsWith(lower)
+  )
+  return [...getColumnSuggestions(partial, scope), ...cohortOnly]
+}
+
+function resolveField(name: string, scope: SuggestionScope): FilterColumnDef | undefined {
+  const col = findColumn(name)
+  if (col) return isColumnInScope(col, scope) ? col : undefined
+  return scope === 'cohort'
+    ? COHORT_ONLY_COLUMNS.find((c) => c.key === name.toLowerCase())
+    : undefined
+}
+
+const RANGE_OPERATORS = new Set(['<', '>', '<=', '>='])
+
+/** Operator label plus what happens to variants that have no value for the field. */
+function operatorDescription(op: string, col: FilterColumnDef): string {
+  const label = OPERATOR_LABELS[op] ?? op
+  if (col.type === 'numeric' && RANGE_OPERATORS.has(op)) {
+    return `${label} — also keeps variants with no ${col.label} value`
+  }
+  if (op === '!=') return `${label} — variants with no ${col.label} value never match`
+  return label
+}
+
+function fieldSuggestion(col: FilterColumnDef): Suggestion {
+  return {
+    value: col.key,
+    label: col.key,
+    description: col.label,
+    category: 'column',
+    typeBadge: col.type
+  }
 }
 
 type AutocompleteState = 'empty' | 'column' | 'operator' | 'value' | 'combinator' | 'preset'
@@ -128,11 +173,14 @@ function detectState(input: string): ParsedContext {
  *
  * @param input - Current text in the search bar
  * @param presetNames - Available preset names (from preset store)
- * @returns Suggestions sorted by relevance, limited to MAX_SUGGESTIONS
+ * @param scope - The view being filtered; only its fields are offered
+ * @returns Suggestions sorted by relevance. Every in-scope field is listed so a
+ *   query can be built by picking alone; other lists stop at MAX_SUGGESTIONS.
  */
 export function getAutocompleteSuggestions(
   input: string,
-  presetNames: string[] = []
+  presetNames: string[] = [],
+  scope: SuggestionScope = 'case'
 ): Suggestion[] {
   const ctx = detectState(input)
 
@@ -140,33 +188,18 @@ export function getAutocompleteSuggestions(
     case 'empty': {
       const hint: Suggestion = {
         value: '',
-        label: 'Type column name to filter, or plain text to search',
+        label: 'Pick a field to build a filter, or type text to search',
         category: 'hint',
         description: 'e.g. gnomad_af:<:0.01 or BRCA1'
       }
-      const cols: Suggestion[] = FILTER_COLUMNS.slice(0, MAX_SUGGESTIONS - 1).map((col) => ({
-        value: col.key,
-        label: col.key,
-        description: col.label,
-        category: 'column' as SuggestionCategory,
-        typeBadge: col.type
-      }))
-      return [hint, ...cols].slice(0, MAX_SUGGESTIONS)
+      return [hint, ...fieldsMatching('', scope).map(fieldSuggestion)]
     }
 
-    case 'column': {
-      const matching = getColumnSuggestions(ctx.partial)
-      return matching.slice(0, MAX_SUGGESTIONS).map((col) => ({
-        value: col.key,
-        label: col.key,
-        description: col.label,
-        category: 'column' as SuggestionCategory,
-        typeBadge: col.type
-      }))
-    }
+    case 'column':
+      return fieldsMatching(ctx.partial, scope).map(fieldSuggestion)
 
     case 'operator': {
-      const colDef = findColumn(ctx.column ?? '')
+      const colDef = resolveField(ctx.column ?? '', scope)
       if (!colDef) return []
       return colDef.operators
         .filter((op) => ctx.partial === '' || op.startsWith(ctx.partial))
@@ -174,16 +207,15 @@ export function getAutocompleteSuggestions(
         .map((op) => ({
           value: op,
           label: op,
-          description: OPERATOR_LABELS[op] ?? op,
+          description: operatorDescription(op, colDef),
           category: 'operator' as SuggestionCategory
         }))
     }
 
     case 'value': {
-      const colDef = findColumn(ctx.column ?? '')
+      const colDef = resolveField(ctx.column ?? '', scope)
       if (!colDef) return []
-      const common = getCommonValues(colDef.key)
-      return common
+      const values = getCommonValues(colDef.key)
         .filter((cv) => ctx.partial === '' || String(cv.value).startsWith(ctx.partial))
         .slice(0, MAX_SUGGESTIONS)
         .map((cv) => ({
@@ -192,6 +224,14 @@ export function getAutocompleteSuggestions(
           description: cv.label,
           category: 'value' as SuggestionCategory
         }))
+      if (values.length > 0 || ctx.partial !== '') return values
+      return [
+        {
+          value: '',
+          label: `Type a ${colDef.type === 'numeric' ? 'number' : 'value'} for ${colDef.label}, then press Enter`,
+          category: 'hint'
+        }
+      ]
     }
 
     case 'combinator':

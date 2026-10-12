@@ -245,4 +245,21 @@ describe('parseDsl', () => {
       expect(result.ast).toEqual(ast)
     })
   })
+
+  describe('view scope', () => {
+    it('rejects per-case fields in the cohort view', () => {
+      for (const input of ['gt_num:=:1/1', 'hpo:>:0.3', 'qual:>=:30', 'moi:=:AD']) {
+        const result = parseDsl(input, 'cohort')
+        expect(result.ast).toBeNull()
+        expect(result.errors[0].message).toContain('per-case field')
+      }
+    })
+
+    it('rejects cohort-only fields in a single case and accepts them in the cohort view', () => {
+      expect(parseDsl('carrier_count:>=:2').errors[0].message).toContain('cohort field')
+      expect(parseDsl('carrier_count:>=:2', 'cohort').errors).toEqual([])
+      expect(parseDsl('gt_num:=:1/1').errors).toEqual([])
+      expect(parseDsl('cadd:>=:20', 'cohort').errors).toEqual([])
+    })
+  })
 })
