@@ -23,6 +23,7 @@ vi.mock('../../src/web/server/web-gene-reference', () => ({
 
 import { zipStream } from '../../src/web/server/downloads/zip-stream'
 import { MAX_XLSX_DATA_ROWS, xlsxStream } from '../../src/web/server/downloads/xlsx-stream'
+import { cohortInfoRows } from '../../src/web/server/downloads/export-artifacts'
 import { DownloadGrantRegistry } from '../../src/web/server/downloads/download-grants'
 import { buildDispatcher, registerDispatcher } from '../../src/web/server/dispatcher'
 import { registerExportDownloadRoutes } from '../../src/web/server/routes/export-download'
@@ -177,5 +178,14 @@ describe('panel BED artifact', () => {
       })
     )
     await app.close()
+  })
+})
+
+describe('cohortInfoRows (issue #558 small extra)', () => {
+  test('adds the Truncated note when truncated, else no rows', () => {
+    expect(cohortInfoRows({ rowCount: 5, truncated: false })).toEqual([])
+    expect(cohortInfoRows({ rowCount: 5, truncated: true })).toEqual([
+      ['Truncated', 'Excel row limit reached; use CSV for all rows']
+    ])
   })
 })

@@ -244,6 +244,24 @@ describe('buildMetadataSheet', () => {
 // CSV export pipeline
 // ---------------------------------------------------------------------------
 
+function makeCsvParams(
+  db: DatabaseType,
+  caseId: number,
+  overrides?: Partial<ExportPipelineParams>,
+): ExportPipelineParams {
+  const { sql, params } = buildExportSql(caseId)
+  return {
+    db,
+    compiledSql: sql,
+    compiledParams: params,
+    outputFilePath: makeOutputPath('csv'),
+    format: 'csv',
+    caseName: 'Test Case',
+    filterSummary: {},
+    ...overrides,
+  }
+}
+
 describe('runExportPipeline — CSV', () => {
   let db: DatabaseType
   let caseId: number
@@ -257,23 +275,10 @@ describe('runExportPipeline — CSV', () => {
     db.close()
   })
 
-  function makeCsvParams(overrides?: Partial<ExportPipelineParams>): ExportPipelineParams {
-    const { sql, params } = buildExportSql(caseId)
-    return {
-      db,
-      compiledSql: sql,
-      compiledParams: params,
-      outputFilePath: makeOutputPath('csv'),
-      format: 'csv',
-      caseName: 'Test Case',
-      filterSummary: {},
-      ...overrides
-    }
-  }
 
   it('produces a valid CSV file with correct header row', async () => {
     insertVariant(db, caseId, { chr: '1', pos: 100, ref: 'A', alt: 'G' })
-    const params = makeCsvParams()
+    const params = makeCsvParams(db, caseId)
     await runExportPipeline(params)
 
     const content = readFileSync(params.outputFilePath, 'utf8')
@@ -287,7 +292,7 @@ describe('runExportPipeline — CSV', () => {
     insertVariant(db, caseId, { chr: '2', pos: 200 })
     insertVariant(db, caseId, { chr: '3', pos: 300 })
 
-    const params = makeCsvParams()
+    const params = makeCsvParams(db, caseId)
     const result = await runExportPipeline(params)
 
     expect(result.rowCount).toBe(3)
@@ -299,7 +304,7 @@ describe('runExportPipeline — CSV', () => {
 
   it('returns correct result shape', async () => {
     insertVariant(db, caseId, { chr: '1', pos: 100 })
-    const params = makeCsvParams()
+    const params = makeCsvParams(db, caseId)
     const result = await runExportPipeline(params)
 
     expect(result.rowCount).toBe(1)
@@ -308,7 +313,7 @@ describe('runExportPipeline — CSV', () => {
 
   it('correctly formats gnomad_af in exponential notation', async () => {
     insertVariant(db, caseId, { chr: '1', pos: 100, gnomad_af: 0.0001 })
-    const params = makeCsvParams()
+    const params = makeCsvParams(db, caseId)
     await runExportPipeline(params)
 
     const content = readFileSync(params.outputFilePath, 'utf8')
@@ -317,7 +322,7 @@ describe('runExportPipeline — CSV', () => {
 
   it('correctly formats cadd with 2 decimal places', async () => {
     insertVariant(db, caseId, { chr: '1', pos: 100, cadd: 25.123 })
-    const params = makeCsvParams()
+    const params = makeCsvParams(db, caseId)
     await runExportPipeline(params)
 
     const content = readFileSync(params.outputFilePath, 'utf8')
@@ -326,7 +331,7 @@ describe('runExportPipeline — CSV', () => {
 
   it('CSV-escapes values that contain commas', async () => {
     insertVariant(db, caseId, { chr: '1', pos: 100, aa_change: 'p.Arg,Gly' })
-    const params = makeCsvParams()
+    const params = makeCsvParams(db, caseId)
     await runExportPipeline(params)
 
     const content = readFileSync(params.outputFilePath, 'utf8')
@@ -334,7 +339,7 @@ describe('runExportPipeline — CSV', () => {
   })
 
   it('produces header-only CSV when no variants exist', async () => {
-    const params = makeCsvParams()
+    const params = makeCsvParams(db, caseId)
     const result = await runExportPipeline(params)
 
     expect(result.rowCount).toBe(0)
@@ -347,7 +352,7 @@ describe('runExportPipeline — CSV', () => {
   it('calls onProgress callback', async () => {
     insertVariant(db, caseId, { chr: '1', pos: 100 })
     const onProgress = vi.fn()
-    const params = makeCsvParams({ onProgress })
+    const params = makeCsvParams(db, caseId, { onProgress })
     await runExportPipeline(params)
 
     // At minimum, the initial progress(0, 0) is called
@@ -497,4 +502,56 @@ describe('runExportPipeline — XLSX', () => {
     expect(result.rowCount).toBe(1)
     expect(result.filePath).toBe(params.outputFilePath)
   })
+})
+
+describe('runExportPipeline — CSV failure modes (issue #558)', () => {
+  let db: DatabaseType
+  let caseId: number
+
+  beforeEach(() => {
+    db = createTestDb()
+    caseId = createCase(db, 'Test Case')
+  })
+
+  afterEach(() => {
+    try {
+      db.close()
+    } catch {
+      // Already closed by the premature-close test.
+    }
+  })
+
+
+
+  it('rejects promptly when the output path cannot be opened', async () => {
+    const params = makeCsvParams(db, caseId, {
+      outputFilePath: join(tmpDir, 'no-such-dir', 'out.csv'),
+    })
+    await expect(runExportPipeline(params)).rejects.toThrow()
+    expect(existsSync(params.outputFilePath)).toBe(false)
+  })
+
+  it('rejects promptly on mid-stream write failure and leaves no partial file', async () => {
+    insertVariant(db, caseId, { chr: '1', pos: 100 })
+    // /dev/full opens fine but every write fails ENOSPC: a genuine
+    // mid-stream write failure (not an open failure).
+    const params = makeCsvParams(db, caseId, { outputFilePath: '/dev/full' })
+    await expect(runExportPipeline(params)).rejects.toThrow()
+  }, 15000)
+
+  it('rejects and removes the partial file when the source closes mid-stream', async () => {
+    const insertMany = db.transaction((n: number) => {
+      for (let i = 0; i < n; i++) {
+        insertVariant(db, caseId, { chr: '1', pos: 100 + i })
+      }
+    })
+    insertMany(1500)
+    const params = makeCsvParams({
+      onProgress: (current) => {
+        if (current >= 1000) db.close()
+      },
+    })
+    await expect(runExportPipeline(params)).rejects.toThrow()
+    expect(existsSync(params.outputFilePath)).toBe(false)
+  }, 15000)
 })

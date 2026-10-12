@@ -88,6 +88,15 @@ export function artifactFileName(request: ExportArtifactRequest, panelName?: str
  * `release` returns the source iterator exactly once (ends the pg stream and
  * frees its pooled client).
  */
+
+/**
+ * Info-sheet rows for cohort XLSX exports: the same Truncated note variants
+ * get, without case-specific metadata (cohort requests carry no case).
+ */
+export function cohortInfoRows(r: XlsxStreamResult): (string | number)[][] {
+  return r.truncated ? [['Truncated', 'Excel row limit reached; use CSV for all rows']] : []
+}
+
 async function primedRows(source: AsyncIterable<Row>): Promise<{
   rows: AsyncIterable<Row>
   release: () => Promise<void>
@@ -198,7 +207,10 @@ async function openTabular(
             ...(r.truncated ? [['Truncated', 'Excel row limit reached; use CSV for all rows']] : [])
           ]
         }
-      : undefined
+      : {
+          name: 'Export Info',
+          rows: (r: XlsxStreamResult) => cohortInfoRows(r)
+        }
   const body = xlsxStream(
     {
       name: request.kind === 'variants' ? 'Variants' : 'Cohort Variants',

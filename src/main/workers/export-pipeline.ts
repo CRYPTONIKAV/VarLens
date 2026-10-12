@@ -8,6 +8,8 @@
  */
 import { createWriteStream } from 'node:fs'
 import { writeFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
+import { once } from 'node:events'
 import * as XLSX from 'xlsx'
 import type { Database as DatabaseType } from 'better-sqlite3-multiple-ciphers'
 import type { ExportFilterSummary } from '../../shared/types/export-worker'
@@ -71,39 +73,53 @@ async function runCsvPipeline(params: ExportPipelineParams): Promise<ExportPipel
 
   const stream = createWriteStream(outputFilePath, { encoding: 'utf8' })
 
-  // Attach error handler immediately to prevent unhandled 'error' event crash
-  // if createWriteStream fails to open. The error is re-thrown in the finish promise below.
-  stream.on('error', () => {})
-
-  // Write header row
-  const headerRow = EXPORT_COLUMNS.map((col) => csvEscape(col.header)).join(',')
-  const headerOk = stream.write(headerRow + '\r\n')
-  if (!headerOk) {
-    await new Promise<void>((resolve) => stream.once('drain', resolve))
+  const writeLine = async (line: string): Promise<void> => {
+    if (stream.write(`${line}\r\n`)) {
+      return
+    }
+    await Promise.race([
+      once(stream, 'drain'),
+      once(stream, 'error').then(([error]) => Promise.reject(error)),
+    ])
   }
 
-  let rowCount = 0
-  for (const row of iterator) {
-    const cells = EXPORT_COLUMNS.map((col) => csvEscape(formatCellValue(col.key, row[col.key])))
-    const ok = stream.write(cells.join(',') + '\r\n')
-    if (!ok) {
-      await new Promise<void>((resolve) => stream.once('drain', resolve))
-    }
-    rowCount++
+  try {
+    // A failing open (bad path, unwritable disk) must reject here instead
+    // of hanging on a drain that never fires.
+    await Promise.race([
+      once(stream, 'open'),
+      once(stream, 'error').then(([error]) => Promise.reject(error)),
+    ])
 
-    if (rowCount % 1000 === 0) {
-      onProgress?.(rowCount, 0)
+    // Write header row
+    const headerRow = EXPORT_COLUMNS.map((col) => csvEscape(col.header)).join(',')
+    await writeLine(headerRow)
+
+    let rowCount = 0
+    for (const row of iterator) {
+      const cells = EXPORT_COLUMNS.map((col) => csvEscape(formatCellValue(col.key, row[col.key])))
+      await writeLine(cells.join(','))
+      rowCount++
+
+      if (rowCount % 1000 === 0) {
+        onProgress?.(rowCount, 0)
+      }
     }
+
+    // Wait for the write stream to flush to disk before reporting completion
+    await new Promise<void>((resolve, reject) => {
+      stream.on('finish', resolve)
+      stream.on('error', reject)
+      stream.end()
+    })
+
+    return { rowCount, filePath: outputFilePath }
+  } catch (error) {
+    stream.destroy()
+    // A file with a header and some of the rows must not be left behind.
+    await rm(outputFilePath, { force: true }).catch(() => undefined)
+    throw error
   }
-
-  // Wait for the write stream to flush to disk before reporting completion
-  await new Promise<void>((resolve, reject) => {
-    stream.on('finish', resolve)
-    stream.on('error', reject)
-    stream.end()
-  })
-
-  return { rowCount, filePath: outputFilePath }
 }
 
 /**
