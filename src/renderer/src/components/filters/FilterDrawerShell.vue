@@ -3,12 +3,18 @@
     :model-value="open"
     location="right"
     temporary
-    :width="panelWidth"
+    :width="drawerWidth"
+    :style="{ zIndex: DRAWER_Z_INDEX }"
     aria-label="Filter options"
     @update:model-value="emit('update:open', $event)"
   >
-    <!-- Left-edge resize handle -->
-    <div class="filter-drawer-resize-handle" @mousedown="startResize" @dblclick="resetWidth" />
+    <!-- Left-edge resize handle (none at full width: nothing to resize against) -->
+    <div
+      v-if="!fullWidth"
+      class="filter-drawer-resize-handle"
+      @mousedown="startResize"
+      @dblclick="resetWidth"
+    />
     <!-- Content mounts on first open: closed, it is off-canvas but would
          otherwise mount every filter panel alongside the variant table. -->
     <v-card v-if="contentMounted" flat class="h-100 d-flex flex-column">
@@ -73,29 +79,34 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed } from 'vue'
 import { useDisplay } from 'vuetify'
 import { usePanelResize } from '../../composables/usePanelResize'
 import { useMountOnFirstOpen } from '../../composables/useMountOnFirstOpen'
+import {
+  FILTER_DRAWER_MAX_WIDTH,
+  FILTER_DRAWER_MIN_WIDTH,
+  filterDrawerWidth
+} from '../../utils/responsive-layout'
 import { mdiClose, mdiFilterOff, mdiUnfoldLessHorizontal, mdiUnfoldMoreHorizontal } from '@mdi/js'
 
-const { width: viewportWidth } = useDisplay()
-const maxDrawerWidth = computed(() => Math.min(500, Math.floor(viewportWidth.value * 0.4)))
+// Above the app sidebar and its narrow-viewport scrim (Vuetify layout items sit
+// near 1000, earlier items higher) so Close stays reachable; below overlays
+// (menus, dialogs: 2000+) opened from inside the drawer.
+const DRAWER_Z_INDEX = 1500
 
+const { width: viewportWidth } = useDisplay()
+
+// panelWidth is the stored preference; the viewport only limits what is shown.
 const { panelWidth, startResize, resetWidth } = usePanelResize({
   side: 'right',
   storageKey: 'varlens_filter_drawer_width',
   defaultWidth: 300,
-  minWidth: 250,
-  maxWidth: 500
+  minWidth: FILTER_DRAWER_MIN_WIDTH,
+  maxWidth: FILTER_DRAWER_MAX_WIDTH
 })
-
-// Clamp panel width when viewport shrinks
-watch(maxDrawerWidth, (max) => {
-  if (panelWidth.value > max) {
-    panelWidth.value = max
-  }
-})
+const drawerWidth = computed(() => filterDrawerWidth(panelWidth.value, viewportWidth.value))
+const fullWidth = computed(() => drawerWidth.value >= viewportWidth.value)
 
 const props = defineProps<{
   open: boolean

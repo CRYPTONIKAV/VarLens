@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   clampDetailPanelWidth,
   computeAutoHiddenColumns,
+  filterDrawerWidth,
   getMaxAutoVisibleColumns,
   isColumnVisible,
   isDetailPanelDocked
@@ -30,6 +31,27 @@ describe('clampDetailPanelWidth', () => {
     expect(clampDetailPanelWidth(100, 1920)).toBe(300)
     // 45% of 600 = 270 < min → min wins
     expect(clampDetailPanelWidth(500, 600)).toBe(300)
+  })
+})
+
+describe('filterDrawerWidth', () => {
+  it('goes full width when 40vw is under the 250 px minimum', () => {
+    expect(filterDrawerWidth(300, 390)).toBe(390)
+    expect(filterDrawerWidth(500, 512)).toBe(512)
+  })
+
+  it('caps the preferred width at 40vw, never below 250 px', () => {
+    // 40% of 768 = 307, of 1024 = 409
+    expect(filterDrawerWidth(500, 768)).toBe(307)
+    expect(filterDrawerWidth(260, 768)).toBe(260)
+    expect(filterDrawerWidth(500, 1024)).toBe(409)
+    expect(filterDrawerWidth(300, 1024)).toBe(300)
+    expect(filterDrawerWidth(100, 1024)).toBe(250)
+  })
+
+  it('returns the preferred width again once the viewport is wide enough', () => {
+    expect(filterDrawerWidth(450, 390)).toBe(390)
+    expect(filterDrawerWidth(450, 1920)).toBe(450)
   })
 })
 
