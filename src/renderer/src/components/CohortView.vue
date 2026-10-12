@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, provide, onActivated, onDeactivated, onMounted, watch } from 'vue'
+import { ref, computed, provide, onActivated, onDeactivated, onMounted, watch } from 'vue'
 import CohortTable from './CohortTable.vue'
 import GeneBurdenView from './association/GeneBurdenView.vue'
 import { FiltersKey, createFilters } from '../composables/useFilters'
@@ -221,7 +221,12 @@ onActivated(async () => {
   }
 })
 
-defineExpose({ refresh })
+// Shortcut target: only while the Variants tab (and so its filter bar) is visible.
+const filterBar = computed(() =>
+  activeTab.value === 'variants' ? (cohortTableRef.value?.filterBar ?? null) : null
+)
+
+defineExpose({ refresh, filterBar })
 </script>
 
 <style scoped>

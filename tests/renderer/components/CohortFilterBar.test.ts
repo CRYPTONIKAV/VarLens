@@ -233,6 +233,16 @@ describe('CohortFilterBar', () => {
       expect(clearButton).toBeDefined()
     })
 
+    it('exposes the shortcut commands (clear emits clear-all)', () => {
+      const wrapper = mount(CohortFilterBar, { props: defaultProps, global: globalConfig })
+      const vm = wrapper.vm as unknown as Record<string, () => void>
+      for (const name of ['focusSearch', 'toggleFilterDrawer', 'toggleColumnsDrawer']) {
+        expect(() => vm[name]()).not.toThrow()
+      }
+      vm.handleClearAll()
+      expect(wrapper.emitted('clear-all')).toBeTruthy()
+    })
+
     it('emits export when export button clicked', async () => {
       const wrapper = mount(CohortFilterBar, {
         props: defaultProps,

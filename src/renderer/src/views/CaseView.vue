@@ -32,6 +32,7 @@ const {
   initialSearch,
   caseCount,
   filterToolbarRef,
+  caseShortlistActive,
   variantTableRef,
   panelOpen,
   selectedPanelVariant,
@@ -76,6 +77,7 @@ const lastNonShortlistType = ref<PerTypeTab>('snv')
 const shortlistVisited = ref(false)
 
 watch(selectedVariantType, (next) => {
+  caseShortlistActive.value = next === 'shortlist'
   if (next !== 'shortlist') {
     lastNonShortlistType.value = next
   } else {
