@@ -1,7 +1,7 @@
 <template>
   <div class="variant-identity-section">
     <div class="d-flex align-center mb-2">
-      <h3 class="text-title-large">{{ variant.gene_symbol ?? 'Unknown Gene' }}</h3>
+      <h3 class="text-title-large">{{ title }}</h3>
       <IconButton
         v-if="variant.gene_symbol"
         label="Open protein view"
@@ -14,17 +14,8 @@
     </div>
 
     <!-- Transcript + cDNA + protein change -->
-    <div
-      v-if="variant.cdna || variant.aa_change || (isFullVariant && (variant as Variant).transcript)"
-      class="d-flex align-center mb-1"
-    >
-      <span class="hgvs-notation">
-        <span v-if="isFullVariant && (variant as Variant).transcript" class="text-muted">
-          {{ (variant as Variant).transcript }}<template v-if="variant.cdna">:</template>
-        </span>
-        <template v-if="variant.cdna">{{ variant.cdna }}</template>
-        <template v-if="variant.aa_change"> {{ ' ' }}{{ variant.aa_change }} </template>
-      </span>
+    <div v-if="hgvsText" class="d-flex align-center mb-1">
+      <span class="hgvs-notation">{{ hgvsText }}</span>
       <IconButton
         v-if="variant.cdna"
         :label="hgvsCopied ? 'HGVS copied' : 'Copy HGVS notation'"
@@ -32,7 +23,7 @@
         size="x-small"
         tooltip-location="top"
         class="ml-2"
-        @click="copyHgvs"
+        @click="copyHgvsText(hgvsText)"
       />
     </div>
 
@@ -77,6 +68,8 @@ import type { CohortVariant } from '../../../shared/types/cohort'
 import type { VepColocatedVariant } from '../../../shared/types/vep'
 import { mdiCheck, mdiContentCopy, mdiDna } from '@mdi/js'
 import IconButton from './common/IconButton.vue'
+import { formatHgvs } from '../utils/formatters'
+import { NO_GENE_LABEL } from '../config/displayConfig'
 
 interface Props {
   variant: Variant | CohortVariant
@@ -103,6 +96,20 @@ const { copy: copyHgvsText, copied: hgvsCopied } = useClipboard()
 const { copy: copyVariantText, copied: variantCopied } = useClipboard()
 const { copy: copyRsIdText, copied: rsIdCopied } = useClipboard()
 
+// An STR call has no gene symbol but a repeat id (e.g. FMR1_CGG) that names it
+const title = computed(() => {
+  const repeatId = (props.variant as { _str_repeat_id?: string | null })._str_repeat_id
+  const names = [props.variant.gene_symbol, repeatId]
+  return names.find((name) => name !== null && name !== undefined && name !== '') ?? NO_GENE_LABEL
+})
+
+// Same string for display and Copy HGVS (VEP values already carry the versioned transcript)
+const hgvsText = computed(() => {
+  const transcript = isFullVariant.value ? (props.variant as Variant).transcript : null
+  const parts = [formatHgvs(props.variant.cdna, transcript), formatHgvs(props.variant.aa_change)]
+  return parts.filter((p) => p !== null).join(' ')
+})
+
 // Compute rsID from colocatedVariants
 const rsId = computed(() => {
   if (props.colocatedVariants.length === 0) return null
@@ -116,23 +123,6 @@ const rsId = computed(() => {
  */
 function formatPosition(pos: number): string {
   return pos.toLocaleString()
-}
-
-/**
- * Copy HGVS notation to clipboard
- */
-async function copyHgvs(): Promise<void> {
-  if (props.variant.cdna !== null && props.variant.cdna !== '') {
-    const transcript = isFullVariant.value ? (props.variant as Variant).transcript : null
-    let text =
-      transcript !== null && transcript !== undefined && transcript !== ''
-        ? `${transcript}:${props.variant.cdna}`
-        : props.variant.cdna
-    if (props.variant.aa_change !== null && props.variant.aa_change !== '') {
-      text += ` ${props.variant.aa_change}`
-    }
-    await copyHgvsText(text)
-  }
 }
 
 /**

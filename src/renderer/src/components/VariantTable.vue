@@ -159,15 +159,7 @@
 
       <!-- Func (handle null) with human-readable formatting -->
       <template #[`item.func`]="{ value }">
-        <span
-          v-if="value"
-          class="consequence-cell"
-          :data-tooltip="value"
-          data-tooltip-location="top"
-        >
-          {{ formatConsequence(value) }}
-        </span>
-        <EmptyPlaceholder v-else />
+        <ConsequenceCell :consequence="value" />
       </template>
 
       <!-- Qual score (handle null/undefined/non-number) -->
@@ -282,7 +274,6 @@ import { useColumnPreferences } from '../composables/useColumnPreferences'
 import { useVariantLinks } from '../composables/useVariantLinks'
 import { useLinkResolvers } from '../composables/useLinkResolvers'
 import { useAutoPageSize } from '../composables/useAutoPageSize'
-import { formatConsequence } from '../utils/formatters'
 import { getAdaptiveRowScrollBehavior } from '../utils/adaptiveRowScroll'
 import { useTableScroll } from '../composables/useTableScroll'
 import { useTableKeyboardNav, hasCommandModifier } from '../composables/useTableKeyboardNav'

@@ -111,11 +111,11 @@
       </template>
 
       <template #[`item.cdna`]="{ value }">
-        <span class="hgvs-notation">{{ value ?? '--' }}</span>
+        <HgvsCell :value="value" />
       </template>
 
       <template #[`item.aa_change`]="{ value }">
-        <span class="hgvs-notation">{{ value ?? '--' }}</span>
+        <HgvsCell :value="value" />
       </template>
 
       <template #[`item.consequence`]="{ value }">
@@ -124,7 +124,7 @@
 
       <!-- Functional consequence -->
       <template #[`item.func`]="{ value }">
-        <span class="consequence-cell">{{ value ?? '--' }}</span>
+        <ConsequenceCell class="consequence-cell" :consequence="value" />
       </template>
 
       <!-- ClinVar with dynamic link from store -->
@@ -151,7 +151,11 @@
       </template>
 
       <template #[`item.cohort_frequency`]="{ value }">
-        {{ value !== null && value !== undefined ? (value * 100).toFixed(2) + '%' : '--' }}
+        {{
+          value !== null && value !== undefined
+            ? (value * 100).toFixed(2) + '%'
+            : EMPTY_VALUE_PLACEHOLDER
+        }}
       </template>
 
       <!-- Het / Hom combined column -->
@@ -206,12 +210,14 @@ import {
   GeneSymbolCell,
   ConsequenceCell,
   AnnotationsCell,
+  HgvsCell,
   AnnotationsHeader,
   ExpandToggleCell,
   ExternalLinkCell,
   LinkOutsCell
 } from '../table-cells'
 import CarrierExpandedRow from './CarrierExpandedRow.vue'
+import { EMPTY_VALUE_PLACEHOLDER } from '../../config/displayConfig'
 import { useDatabaseStore } from '../../stores/databaseStore'
 import AcmgQuickMenu from '../table-cells/AcmgQuickMenu.vue'
 import { provideAcmgQuickMenu } from '../table-cells/acmg-quick-menu'
