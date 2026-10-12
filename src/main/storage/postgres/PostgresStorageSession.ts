@@ -171,17 +171,18 @@ export class PostgresStorageSession implements StorageSession {
     const audit = new PostgresAuditLogRepository(options.pool, options.config.schema)
     const transcripts = new PostgresTranscriptsRepository(options.pool, options.config.schema)
     const variants = new PostgresVariantReadRepository(options.pool, options.config.schema)
+    const exportRows = new PostgresExportRepository(options.pool, options.config.schema)
     const shortlist = new PostgresShortlistService({
       pool: options.pool,
       schema: options.config.schema,
       filterPresets,
-      variants
+      rows: exportRows
     })
     this.readExecutor = new PostgresReadExecutor({
       casesQuery: new PostgresCasesQueryRepository(options.pool, options.config.schema),
       availableBuilds: new PostgresAvailableBuildsRepository(options.pool, options.config.schema),
       overview: new PostgresOverviewRepository(options.pool, options.config.schema),
-      export: new PostgresExportRepository(options.pool, options.config.schema),
+      export: exportRows,
       cohort,
       tags,
       annotations,

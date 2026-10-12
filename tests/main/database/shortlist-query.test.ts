@@ -23,6 +23,7 @@ import { initializeSchema } from '../../../src/main/database/schema'
 import { runMigrations } from '../../../src/main/database/migrations'
 import { createRepositories } from '../../../src/main/database/createRepositories'
 import {
+  forEachCandidatePage,
   queryVariantsByType,
   toShortlistVariantFilter
 } from '../../../src/main/database/shortlist-query'
@@ -277,6 +278,21 @@ describe('queryVariantsByType()', () => {
     expect(ids).toEqual([1, 10, 11, 12, 13])
     // And assert ascending order as the contract guarantees.
     expect([...ids].sort((a, b) => a - b)).toEqual(ids)
+  })
+
+  it('forEachCandidatePage streams every eligible row in id-keyset pages', () => {
+    for (let i = 10; i < 30; i++) {
+      db.prepare(
+        `INSERT INTO variants (id, case_id, variant_type, chr, pos, ref, alt)
+         VALUES (?, 1, 'snv', '1', ?, 'A', 'T')`
+      ).run(i, i * 100)
+    }
+    const pages: number[][] = []
+    forEachCandidatePage({ db, filterBuilder }, toShortlistVariantFilter(1, 'snv', {}), 8, (rows) =>
+      pages.push(rows.map((r) => r.id))
+    )
+    expect(pages.map((p) => p.length)).toEqual([8, 8, 5])
+    expect(pages.flat()).toEqual([1, ...Array.from({ length: 20 }, (_, i) => i + 10)])
   })
 
   it('snv scope is exact: indel rows are not swept in as on the variant table', () => {

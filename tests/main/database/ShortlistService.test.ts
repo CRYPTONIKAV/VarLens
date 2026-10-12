@@ -391,25 +391,14 @@ describe('ShortlistService', () => {
       expect(result.rows.length).toBeLessThanOrEqual(2)
     })
 
-    it('reports totalCandidates >= rows.length (pre-slice)', () => {
-      // topN=1 → perTypeLimit = 4. The fixture seeds 8 SNVs (capped at 4),
-      // 1 indel, 1 SV, 1 CNV, 1 STR → totalCandidates = 4+1+1+1+1 = 8.
+    it('reports every eligible candidate in totalCandidates, independent of topN', () => {
+      // 7 snv + 1 indel + 1 sv + 1 cnv + 1 str = 11 — no topN-derived cap (#537).
       const result = getShortlist({
         caseId: 1,
         adHocConfig: baseAdHocConfig({ topN: 1 })
       })
-      expect(result.totalCandidates).toBeGreaterThanOrEqual(result.rows.length)
-      expect(result.totalCandidates).toBe(8)
+      expect(result.totalCandidates).toBe(11)
       expect(result.rows.length).toBe(1)
-    })
-
-    it('observes per-type cap at topN*4 during Stage 1', () => {
-      // topN=1 means only 4 SNV rows should make it past the cap despite 8 seeded.
-      const result = getShortlist({
-        caseId: 1,
-        adHocConfig: baseAdHocConfig({ topN: 1, variantTypeScope: ['snv'] })
-      })
-      expect(result.totalCandidates).toBe(4)
     })
 
     it('with larger topN, pre-slice count matches full fixture (no cap hit)', () => {

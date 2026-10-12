@@ -64,16 +64,15 @@ const { showStale, ariaBusy, liveMessage } = useTableLoadingState({
 // asynchronously, so gating on loading left the body empty for a frame or two.
 const showSkeleton = computed(() => result.value === null && error.value === null)
 
-// Plain-language explanation of the capped Stage-1 pre-selection (was the
-// developer-facing "Scored (capped): N → top M (Xms)" readout).
+// Plain-language explanation of how the shortlist is built: every matching
+// variant is scored, the best N are shown (#537).
 const shortlistExplanation = computed(() => {
   const r = result.value
   if (r === null) return ''
   return (
-    `To stay fast, VarLens first pre-selects up to ${r.totalCandidates} likely candidates ` +
-    `matching the preset, scores them, and shows the best ${r.rows.length}. ` +
-    `Variants outside the pre-selection are not ranked here; use the variant-type tabs ` +
-    `to browse everything. Ranked in ${r.elapsedMs} ms.`
+    `VarLens scores all ${r.totalCandidates} variants matching the preset and shows ` +
+    `the best ${r.rows.length}. Use the variant-type tabs to browse everything. ` +
+    `Ranked in ${r.elapsedMs} ms.`
   )
 })
 
@@ -134,7 +133,7 @@ function dismissError(): void {
         data-testid="shortlist-summary"
       >
         <template v-if="result">
-          Top {{ result.rows.length }} of {{ result.totalCandidates }} pre-selected candidates
+          Top {{ result.rows.length }} of {{ result.totalCandidates }} matching candidates
           <IconButton
             label="How the shortlist is built"
             :tooltip="shortlistExplanation"

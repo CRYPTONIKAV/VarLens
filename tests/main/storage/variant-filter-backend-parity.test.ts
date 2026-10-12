@@ -368,7 +368,7 @@ describe.skipIf(!RUN)('variant filter backend parity — issue #447', () => {
           pool,
           schema,
           filterPresets: { getPreset: async () => null },
-          variants: new PostgresVariantReadRepository(pool, schema)
+          rows: new PostgresExportRepository(pool, schema)
         })
         const result = await service.getShortlist({
           caseId: pgCaseIds[caseIndex],
