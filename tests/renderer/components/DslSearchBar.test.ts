@@ -68,6 +68,26 @@ async function focusBar(wrapper: VueWrapper): Promise<void> {
 }
 
 describe('DslSearchBar', () => {
+  it('describes a pending draft below the field instead of squeezing the input', () => {
+    current = mount(DslSearchBar, {
+      props: {
+        rawInput: 'gene:=:BRCA1',
+        suggestions: [],
+        isDslMode: true,
+        errors: [],
+        notApplied: true
+      },
+      global: { plugins: [vuetify] },
+      attachTo: document.body
+    })
+    const describedBy = current.find('input').attributes('aria-describedby') ?? ''
+    expect(describedBy).not.toBe('')
+    expect(document.getElementById(describedBy)?.textContent?.trim()).toBe(
+      'Not applied — press Enter to apply'
+    )
+    expect(current.find('.v-field__append-inner').text()).not.toContain('Not applied')
+  })
+
   it('has exactly one combobox and it is the input', () => {
     const { wrapper } = harness()
     current = wrapper

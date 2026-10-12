@@ -10,6 +10,7 @@
       hide-details="auto"
       clearable
       :error-messages="errorMessages"
+      :messages="notApplied && !hasErrors ? NOT_APPLIED_MESSAGE : []"
       class="dsl-search-bar"
       aria-label="Search variants (text or filter DSL)"
       aria-autocomplete="list"
@@ -26,17 +27,6 @@
     >
       <!-- Append inner: mode indicator -->
       <template #append-inner>
-        <v-chip
-          v-if="notApplied"
-          size="x-small"
-          color="warning"
-          variant="tonal"
-          label
-          class="mr-1"
-          title="Press Enter to apply"
-        >
-          Not applied
-        </v-chip>
         <v-chip v-if="isDslMode" size="x-small" color="primary" variant="tonal" label class="mr-1">
           DSL
         </v-chip>
@@ -169,6 +159,7 @@ watch(
 )
 
 const hasErrors = computed(() => props.errors.length > 0)
+const NOT_APPLIED_MESSAGE = ['Not applied — press Enter to apply']
 /** Shown persistently below the field (VField links them via aria-describedby) */
 const errorMessages = computed(() => props.errors.map((e) => e.message))
 
@@ -336,6 +327,33 @@ defineExpose({ focus })
   border-radius: 6px;
 }
 
+/* Errors and the "not applied" note float below the field: the toolbars have a
+   fixed height, so in-flow messages would squeeze the input and be clipped. */
+.dsl-search-bar :deep(.v-input__details) {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  min-height: 0;
+  margin-top: 2px;
+  padding: 4px 8px;
+  border: 1px solid rgb(var(--v-theme-warning));
+  border-radius: 4px;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 15%);
+}
+
+.dsl-search-bar.v-input--error :deep(.v-input__details) {
+  border-color: rgb(var(--v-theme-error));
+}
+
+.dsl-search-bar :deep(.v-messages) {
+  min-height: 0;
+  overflow: visible;
+  white-space: normal;
+}
+
 .dsl-search-bar.dsl-mode :deep(.v-field) {
   border-color: rgb(var(--v-theme-primary));
   border-width: 2px;
@@ -366,5 +384,13 @@ defineExpose({ focus })
   .dsl-search-bar :deep(.v-field__append-inner .v-chip) {
     display: none;
   }
+}
+</style>
+
+<style>
+/* Let the floating messages above leave the fixed-height toolbar row. */
+.v-toolbar__content:has(.dsl-search-bar-wrapper) {
+  overflow-x: clip;
+  overflow-y: visible;
 }
 </style>
