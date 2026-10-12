@@ -70,7 +70,8 @@ export function exonsInInterval(exons: GeneExon[], interval: VariantInterval): G
 export function formatBpLength(length: number | null | undefined): string {
   if (length === null || length === undefined) return '—'
   const abs = Math.abs(length)
-  if (abs >= 1_000_000) return `${(length / 1_000_000).toFixed(2)} Mb`
-  if (abs >= 1_000) return `${(length / 1_000).toFixed(2)} kb`
-  return `${length} bp`
+  // Unsigned: the sign only encodes DEL vs DUP, which the SV type already shows
+  if (abs >= 1_000_000) return `${(abs / 1_000_000).toFixed(2)} Mb`
+  if (abs >= 1_000) return `${(abs / 1_000).toFixed(2)} kb`
+  return `${abs} bp`
 }

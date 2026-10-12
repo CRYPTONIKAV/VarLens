@@ -125,13 +125,13 @@ describe('ShortlistTable', () => {
             chr: '2',
             pos: 5000,
             sv_type: 'DEL',
-            sv_length: 1000
+            sv_length: -1000
           })
         ]
       },
       global: { plugins: [vuetify] }
     })
-    expect(wrapper.text()).toContain('2:5000 DEL 1000bp')
+    expect(wrapper.text()).toContain('2:5000 DEL 1.00 kb')
   })
 
   it('renders HGVS c. and p. on SNV rows when cdna and aa_change are present', () => {
@@ -232,7 +232,7 @@ describe('ShortlistTable', () => {
       global: { plugins: [vuetify] }
     })
     const text = wrapper.text()
-    expect(text).toContain('3:2000 INS 500bp')
+    expect(text).toContain('3:2000 INS 500 bp')
     expect(text).not.toContain('c.999A>G')
     expect(text).not.toContain('p.Arg1Gly')
   })

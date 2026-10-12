@@ -30,6 +30,7 @@ import { useVariantLinks } from '../../composables/useVariantLinks'
 import { useSharedMenu } from '../table-cells/shared-menu'
 import { useResultSetKeys } from '../table-state/useResultSetKeys'
 import { formatHgvs } from '../../utils/formatters'
+import { formatBpLength } from '../../utils/variant-interval'
 import {
   useTableKeyboardNav,
   isInputFocused,
@@ -99,7 +100,7 @@ interface VariantCell {
 function variantCell(row: ShortlistRow): VariantCell {
   if (row.variant_type === 'sv') {
     return {
-      primary: `${row.chr}:${row.pos} ${row.sv_type ?? ''} ${row.sv_length ?? '?'}bp`.trim(),
+      primary: `${row.chr}:${row.pos} ${row.sv_type ?? ''} ${formatBpLength(row.sv_length)}`.trim(),
       cdna: null,
       protein: null
     }
