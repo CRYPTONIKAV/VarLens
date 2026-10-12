@@ -46,6 +46,10 @@ const COHORT_FILTER_KEY_ALIASES: Readonly<Record<string, string>> = {
 const hasOwn = (record: object, key: string): boolean =>
   Object.prototype.hasOwnProperty.call(record, key)
 
+/** The canonical cohort key for `key` (`cadd` → `cadd_phred`); other keys unchanged. */
+export const canonicalCohortFilterKey = (key: string): string =>
+  hasOwn(COHORT_FILTER_KEY_ALIASES, key) ? COHORT_FILTER_KEY_ALIASES[key] : key
+
 /** Thrown when a cohort request filters on a column the cohort summary does not hold. */
 export class UnsupportedCohortColumnFilterError extends Error {
   constructor(readonly columns: string[]) {
@@ -70,7 +74,7 @@ export function normalizeCohortColumnFilters(
   const normalized: ColumnFiltersParam = {}
   const unsupported: string[] = []
   for (const [key, filter] of Object.entries(filters)) {
-    const canonical = hasOwn(COHORT_FILTER_KEY_ALIASES, key) ? COHORT_FILTER_KEY_ALIASES[key] : key
+    const canonical = canonicalCohortFilterKey(key)
     if (
       hasOwn(COHORT_SUMMARY_FILTER_COLUMNS, canonical) ||
       resolveExtensionColumnKey(canonical) !== null

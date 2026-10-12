@@ -138,7 +138,7 @@ function toError(value: unknown): Error {
 /**
  * Convert a dotted extension sort key (`sv.vaf`, `cnv.copy_number`,
  * `str.disease`, `str.str_status`) into the flat column alias that
- * `queryVariantsByType` projects onto `ShortlistCandidate` rows
+ * `forEachCandidatePage` projects onto `ShortlistCandidate` rows
  * (`sv_vaf`, `cnv_copy_number`, `str_disease`, `str_status`).
  *
  * Called on the resolved tieBreakers regardless of whether they came

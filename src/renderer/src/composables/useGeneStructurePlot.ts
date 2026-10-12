@@ -23,7 +23,7 @@ import type {
 } from '../../../shared/types/protein'
 import { CLINVAR_COLORS, getClinVarCategory } from '../../../shared/utils/protein-utils'
 import type { Dimensions } from './useResizeObserver'
-import { geneAxisLabel } from '../utils/variant-interval'
+import { exonsInInterval, geneAxisLabel } from '../utils/variant-interval'
 import {
   drawVariantMarker,
   isInterval,
@@ -171,8 +171,9 @@ export function useGeneStructurePlot(options: GeneStructurePlotOptions) {
     // ── Exon rectangles ─────────────────────────────────────────────────
     const exonsGroup = clipGroup.append('g').attr('class', 'exons')
     const v = variant.value
-    const hitsExon = (e: GeneExon): boolean =>
-      v !== null && isInterval(v) && e.end >= v.pos && e.start <= v.end
+    const hitExons = new Set(
+      v !== null && isInterval(v) ? exonsInInterval(gs.exons, { start: v.pos, end: v.end }) : []
+    )
 
     for (const exon of gs.exons) {
       const ex = xScale(exon.start)
@@ -189,8 +190,8 @@ export function useGeneStructurePlot(options: GeneStructurePlotOptions) {
         .attr('rx', 3)
         .attr('ry', 3)
         .attr('fill', EXON_COLOR)
-        .attr('stroke', hitsExon(exon) ? VARIANT_COLOR : '#fff')
-        .attr('stroke-width', hitsExon(exon) ? 2.5 : 1)
+        .attr('stroke', hitExons.has(exon) ? VARIANT_COLOR : '#fff')
+        .attr('stroke-width', hitExons.has(exon) ? 2.5 : 1)
         .attr('cursor', 'pointer')
         .on('mouseenter', (event: MouseEvent) => {
           d3.select(event.currentTarget as SVGRectElement).attr('fill', EXON_COLOR_HOVER)

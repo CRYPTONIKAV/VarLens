@@ -12,7 +12,7 @@
     <div
       v-if="!fullWidth"
       class="filter-drawer-resize-handle"
-      @mousedown="startResize"
+      @mousedown="startDrawerResize"
       @dblclick="resetWidth"
     />
     <!-- Content mounts on first open: closed, it is off-canvas but would
@@ -107,6 +107,11 @@ const { panelWidth, startResize, resetWidth } = usePanelResize({
 })
 const drawerWidth = computed(() => filterDrawerWidth(panelWidth.value, viewportWidth.value))
 const fullWidth = computed(() => drawerWidth.value >= viewportWidth.value)
+// Drag from the shown width, not a larger stored preference the viewport caps.
+const startDrawerResize = (e: MouseEvent): void => {
+  panelWidth.value = drawerWidth.value
+  startResize(e)
+}
 
 const props = defineProps<{
   open: boolean

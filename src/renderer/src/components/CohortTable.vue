@@ -146,6 +146,7 @@ import { useCohortColumns } from './cohort/useCohortColumns'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { CohortQueryParams } from '../composables/useCohortData'
 import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
+import { canonicalCohortFilterKey } from '../../../shared/filters/cohort-column-filter-keys'
 import { mdiDatabaseSync } from '@mdi/js'
 import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import type { AcmgClassification } from '../../../shared/config/domain.config'
@@ -265,7 +266,13 @@ const buildCohortQueryParams = (): Omit<
       ? {
           ...(cohortColumnFilters.value ?? {}),
           ...filters.value.columnFilters,
-          ...(cohortFilterBarRef.value?.dslColumnFilters ?? {})
+          // Canonical keys so a DSL condition replaces its header filter (`cadd` vs `cadd_phred`).
+          ...Object.fromEntries(
+            Object.entries(cohortFilterBarRef.value?.dslColumnFilters ?? {}).map(([key, f]) => [
+              canonicalCohortFilterKey(key),
+              f
+            ])
+          )
         }
       : undefined,
   active_panel_ids:

@@ -107,25 +107,13 @@ export function toShortlistCandidate(row: Variant, isStarred: boolean): Shortlis
 export const SHORTLIST_PAGE_SIZE = 2000
 
 /**
- * Run one keyset page of the Stage-1 candidate query for one variant type:
- * eligible rows with `variants.id > afterId`, ordered by `variants.id` ASC.
- * Ordering is only a deterministic paging key — Stage 2 ranks the rows.
+ * Stream every eligible candidate of one variant type to `onPage` in
+ * keyset pages of `pageSize` rows (ordered by `variants.id`, only as a
+ * deterministic paging key — Stage 2 ranks the rows), preparing panel
+ * regions once.
  *
  * @param filter From {@link toShortlistVariantFilter}, with any active gene
  *   panel already resolved into `panel_intervals` by the caller.
- */
-export function queryVariantsByType(
-  source: ShortlistQuerySource,
-  filter: VariantFilter,
-  limit: number,
-  afterId = 0
-): ShortlistCandidate[] {
-  return withPanelIntervals(source, filter, () => selectPage(source, filter, limit, afterId))
-}
-
-/**
- * Stream every eligible candidate of one variant type to `onPage` in
- * keyset pages of `pageSize` rows, preparing panel regions once.
  */
 export function forEachCandidatePage(
   source: ShortlistQuerySource,

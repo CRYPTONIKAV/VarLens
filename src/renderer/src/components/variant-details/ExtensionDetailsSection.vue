@@ -125,8 +125,6 @@ const sectionTitle = computed(() => {
   return ''
 })
 
-const formatLength = formatBpLength
-
 function formatNumber(val: number | null | undefined, digits = 2): string {
   if (val === null || val === undefined) return '—'
   return val.toFixed(digits)
@@ -194,7 +192,7 @@ function formatText(val: string | null | undefined): string {
           >
         </template>
         <span data-testid="call-length">{{
-          isBreakend ? 'Not applicable (breakend)' : formatLength(variant?.sv_length)
+          isBreakend ? 'Not applicable (breakend)' : formatBpLength(variant?.sv_length)
         }}</span>
       </v-list-item>
       <v-list-item class="px-2">
