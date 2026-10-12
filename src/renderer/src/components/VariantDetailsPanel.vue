@@ -53,6 +53,7 @@
           <ExtensionDetailsSection
             v-if="mode === 'case'"
             :variant="variant as unknown as Record<string, unknown>"
+            :genome-build="genomeBuild"
           />
 
           <!-- Transcript Section (case + cohort mode) -->
@@ -205,6 +206,7 @@
         :variant="variant"
         :case-id="caseId"
         :mode="mode"
+        :genome-build="genomeBuild"
       />
       <ProteinViewUnavailableDialog
         v-else-if="!proteinViewerAvailable"
@@ -274,6 +276,7 @@ import { isWebRuntime } from '../utils/runtime-mode'
 import { useCapabilityStore } from '../stores/capabilityStore'
 import { useMountOnFirstOpen } from '../composables/useMountOnFirstOpen'
 import { usePermissions } from '../composables/usePermissions'
+import { useVariantGenomeBuild } from '../composables/useVariantGenomeBuild'
 
 const { canWrite } = usePermissions()
 
@@ -294,6 +297,7 @@ const emit = defineEmits<{
 // Move focus into the panel on open; restore it to the originating row on close
 const headingRef = ref<HTMLElement | null>(null)
 usePanelFocus(() => props.open, headingRef)
+const genomeBuild = useVariantGenomeBuild(props)
 
 // Protein visualization modal state
 const proteinModalOpen = ref(false)

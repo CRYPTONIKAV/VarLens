@@ -122,6 +122,7 @@
           :loading="proteinData.geneStructureLoading.value"
           :error="proteinData.geneStructureError.value"
           :variant="genomicVariant"
+          :variant-build="genomeBuild"
           :gene-symbol="geneSymbol"
           :clinvar-variants="clinvarVariants"
           :clinvar-loading="clinvarLoading"
@@ -160,6 +161,7 @@ import {
   getConsequenceColor
 } from '../../../../shared/utils/protein-utils'
 import { logService } from '../../services/LogService'
+import { variantInterval } from '../../utils/variant-interval'
 import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 
 interface Props {
@@ -167,6 +169,8 @@ interface Props {
   variant: Variant | CohortVariant | null
   caseId: number | null
   mode: 'case' | 'cohort'
+  /** Genome build of the variant (case build or cohort row build); null when unknown */
+  genomeBuild?: string | null
 }
 
 const props = defineProps<Props>()
@@ -190,10 +194,15 @@ const proteinData = useProteinData(geneSymbol)
 const genomicVariant = computed<GenomicVariant | null>(() => {
   const v = props.variant
   if (v === null) return null
-  const label = v.aa_change ?? `${v.chr}:${v.pos} ${v.ref}>${v.alt}`
+  const interval = variantInterval(v)
+  const label =
+    interval !== null
+      ? `${'sv_type' in v ? (v.sv_type ?? '') : ''} ${v.chr}:${interval.start}-${interval.end}`.trim()
+      : (v.aa_change ?? `${v.chr}:${v.pos} ${v.ref}>${v.alt}`)
   return {
     chr: v.chr,
     pos: v.pos,
+    end: interval?.end ?? null,
     ref: v.ref,
     alt: v.alt,
     label,

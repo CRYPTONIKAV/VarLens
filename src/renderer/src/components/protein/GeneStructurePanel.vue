@@ -110,6 +110,18 @@
       aria-label="Loading gene structure"
     />
 
+    <!-- Genome-build context (#539): the gene model is GRCh38 -->
+    <v-alert
+      v-if="variant && buildNote"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      class="ma-2"
+      data-testid="gene-structure-build-note"
+    >
+      {{ buildNote }}
+    </v-alert>
+
     <!-- Error state -->
     <div v-if="error" class="d-flex flex-column align-center justify-center flex-grow-1 pa-8">
       <v-icon size="48" color="warning" :icon="mdiAlertCircleOutline" class="mb-3" />
@@ -135,6 +147,7 @@
         ref="plotRef"
         :gene-structure="geneStructure"
         :variant="genomicVariant"
+        :axis-note="variant ? buildNote : null"
         :clinvar-variants="clinvarVariants"
         :active-clinvar-categories="activeClinvarCategories"
       />
@@ -146,9 +159,11 @@
         <span class="text-body-2 text-medium-emphasis mr-1 font-weight-medium">Legend:</span>
         <v-chip size="small" label variant="flat" color="primary">Exon</v-chip>
         <v-chip size="small" label variant="outlined" color="grey-darken-2">Intron</v-chip>
-        <v-chip v-if="genomicVariant" size="small" label variant="flat" color="error"
-          >Your Variant</v-chip
-        >
+        <v-chip v-if="genomicVariant" size="small" label variant="flat" color="error">{{
+          isInterval(genomicVariant)
+            ? 'Your Variant (interval; outlined exons affected)'
+            : 'Your Variant'
+        }}</v-chip>
         <span v-if="clinvarVariants.length > 0" class="d-inline-flex align-center ga-1 ml-2">
           <span
             style="
@@ -231,6 +246,8 @@ import type {
 import { CLINVAR_COLORS, getClinVarCategory } from '../../../../shared/utils/protein-utils'
 import { downloadBlob } from '../../utils/download'
 import type { GenomicVariant } from '../../composables/useGeneStructurePlot'
+import { buildStatus, variantBuildNote } from '../../utils/variant-interval'
+import { isInterval } from '../../composables/gene-structure-variant-layer'
 
 interface Props {
   geneStructure: GeneStructure | null
@@ -238,6 +255,8 @@ interface Props {
   error: string | null
   /** Variant to display on gene structure */
   variant: GenomicVariant | null
+  /** The variant's genome build; a variant on another build is not drawn */
+  variantBuild?: string | null
   geneSymbol: string | null
   /** ClinVar variants to display on gene structure */
   clinvarVariants: ClinVarVariant[]
@@ -322,7 +341,11 @@ const plotRef = ref<ComponentPublicInstance<{
   exportPng: () => Promise<Blob | null>
 }> | null>(null)
 
-const genomicVariant = computed<GenomicVariant | null>(() => props.variant)
+const buildNote = computed(() => variantBuildNote(props.variantBuild))
+// Coordinates on another build would land on the wrong exons, so they are not drawn.
+const genomicVariant = computed<GenomicVariant | null>(() =>
+  buildStatus(props.variantBuild) === 'mismatch' ? null : props.variant
+)
 
 function formatGeneLength(bp: number): string {
   if (bp >= 1_000_000) return `${(bp / 1_000_000).toFixed(1)} Mb`

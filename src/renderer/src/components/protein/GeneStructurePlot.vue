@@ -19,6 +19,7 @@ import type {
 interface Props {
   geneStructure: GeneStructure
   variant: GenomicVariant | null
+  axisNote?: string | null
   clinvarVariants?: ClinVarVariant[]
   activeClinvarCategories?: Set<ClinVarSignificance>
 }
@@ -40,6 +41,7 @@ const { tooltip, resetZoom, zoomIn, zoomOut, exportSvg, exportPng } = useGeneStr
   dimensions,
   geneStructure: toRef(props, 'geneStructure'),
   variant: toRef(props, 'variant'),
+  axisNote: computed(() => props.axisNote ?? null),
   clinvarVariants: clinvarRef,
   activeClinvarCategories: activeClinvarRef
 })

@@ -9,3 +9,10 @@ export const caseIdsQuery = defineQueryOptions(() => ({
   key: queryKeys.caseIds(),
   query: async () => unwrapIpcResult(await queryApi().cases.list()).map((c) => c.id)
 }))
+
+/** Genome build of every case in the open database, by case id. */
+export const caseBuildsQuery = defineQueryOptions(() => ({
+  key: queryKeys.caseBuilds(),
+  query: async () =>
+    new Map(unwrapIpcResult(await queryApi().cases.list()).map((c) => [c.id, c.genome_build]))
+}))
