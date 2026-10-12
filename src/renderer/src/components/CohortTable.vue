@@ -1,21 +1,7 @@
 <template>
   <div class="cohort-table-container">
     <!-- IPC Error Banner -->
-    <v-alert
-      v-if="error"
-      type="error"
-      variant="tonal"
-      closable
-      class="mb-4"
-      @click:close="error = null"
-    >
-      <div class="d-flex align-center justify-space-between">
-        <span>{{ error.message || 'Failed to load cohort data' }}</span>
-        <v-btn variant="tonal" size="small" :prepend-icon="mdiRefresh" @click="handleRetry">
-          Retry
-        </v-btn>
-      </div>
-    </v-alert>
+    <QueryErrorAlert :error="error" :stale="variants.length > 0" @retry="handleRetry" />
 
     <!-- Rebuild indicator — the cohort summary table is rebuilt in a worker
          whenever cases are imported/deleted, and the cohort view can't show
@@ -153,13 +139,14 @@ import { useDeferredReload } from '../composables/useDeferredReload'
 import CohortFilterBar from './cohort/CohortFilterBar.vue'
 import CohortDataTable from './cohort/CohortDataTable.vue'
 import AnnotationDialogs from './AnnotationDialogs.vue'
+import QueryErrorAlert from './table-state/QueryErrorAlert.vue'
 // Column composable
 import { useCohortColumns } from './cohort/useCohortColumns'
 // Types
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { CohortQueryParams } from '../composables/useCohortData'
 import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
-import { mdiDatabaseSync, mdiRefresh } from '@mdi/js'
+import { mdiDatabaseSync } from '@mdi/js'
 import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import type { AcmgClassification } from '../../../shared/config/domain.config'
 import { getCurrentUnsupportedReason } from '../utils/backend-capabilities'

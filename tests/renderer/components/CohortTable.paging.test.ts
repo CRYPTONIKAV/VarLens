@@ -252,4 +252,22 @@ describe('CohortTable paging', () => {
     await bar.vm.$emit('filter-change')
     await vi.waitFor(() => expect(queries().at(-1)).not.toHaveProperty('carrier_count_max'))
   })
+
+  // #530 parity: a failed refresh labels the rows still shown as previous results.
+  it('labels stale rows after a failed refresh and retries with the current filters', async () => {
+    getVariants.mockRejectedValueOnce(new Error('HTTP 500'))
+    filtersCtx.filters.value.maxCarriers = 3
+    await wrapper.findComponent({ name: 'CohortFilterBar' }).vm.$emit('filter-change')
+    await flushPromises()
+
+    const alert = wrapper.find('.query-error-alert')
+    expect(alert.text()).toContain('Showing previous results')
+    expect(alert.text()).toContain('HTTP 500')
+    expect(shownRows()).toEqual(['v0'])
+
+    await alert.find('button').trigger('click')
+    await flushPromises()
+    expect(queries().at(-1)).toMatchObject({ carrier_count_max: 3 })
+    expect(wrapper.find('.query-error-alert').exists()).toBe(false)
+  })
 })
