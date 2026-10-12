@@ -20,6 +20,7 @@
     <template #filters>
       <!-- DSL search bar (same component as variant table) -->
       <DslSearchBar
+        ref="searchFieldRef"
         :raw-input="dslInput"
         :suggestions="dslSuggestions"
         :is-dsl-mode="isDslMode"
@@ -607,8 +608,17 @@ onMounted(async () => {
   await loadPresets()
 })
 
-// Expose DSL column filters for CohortTable to merge into query
-defineExpose({ dslColumnFilters })
+const searchFieldRef = ref<InstanceType<typeof DslSearchBar> | null>(null)
+
+// dslColumnFilters: merged into CohortTable's query. The rest are the same
+// shortcut commands FilterToolbar exposes (App dispatches to the visible view).
+defineExpose({
+  dslColumnFilters,
+  focusSearch: () => searchFieldRef.value?.focus(),
+  toggleFilterDrawer: () => (filterDrawerOpen.value = !filterDrawerOpen.value),
+  toggleColumnsDrawer: () => (columnsDrawerOpen.value = !columnsDrawerOpen.value),
+  handleClearAll
+})
 </script>
 
 <style scoped>

@@ -119,6 +119,7 @@ import BackgroundJobsPanel from './components/jobs/BackgroundJobsPanel.vue'
 import type AppDialogHostType from './components/AppDialogHost.vue'
 import { usePanelResize } from './composables/usePanelResize'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { filterShortcutCallbacks } from './composables/useFilterShortcutDispatch'
 import { useDatabaseStore } from './stores/databaseStore'
 import { useCaseMetadata } from './composables/useCaseMetadata'
 import { useCaseDeletion } from './composables/useCaseDeletion'
@@ -179,7 +180,6 @@ const {
   selectedPanelVariant,
   panelMode,
   variantTableRef,
-  filterToolbarRef,
   setCaseCount,
   markCasesLoadFailed,
   incrementDataGeneration,
@@ -412,13 +412,10 @@ useKeyboardShortcuts({
   onDisclaimer: () => dialogHostRef.value?.showDisclaimer(),
   onFaq: () => dialogHostRef.value?.showFaq(),
   onLogViewer: () => dialogHostRef.value?.toggleLogViewer(),
-  onToggleFilterDrawer: () => filterToolbarRef.value?.toggleFilterDrawer(),
-  onToggleColumnsDrawer: () => filterToolbarRef.value?.toggleColumnsDrawer(),
-  onSearchFocus: () => filterToolbarRef.value?.focusSearch(),
+  ...filterShortcutCallbacks(appState),
   onHelp: () => {
     showKeyboardHelp.value = true
   },
-  onClearAllFilters: () => filterToolbarRef.value?.handleClearAll(),
   // Viewers are read-only: the shortcut does nothing (the menu item is disabled).
   onImport: openImportDialog
 })

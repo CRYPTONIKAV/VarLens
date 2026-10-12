@@ -690,7 +690,7 @@ const refresh = async () => {
   // The case set may have changed: cached carrier lists can name deleted cases.
   invalidateCarriers()
 }
-defineExpose({ refresh, softRefresh })
+defineExpose({ refresh, softRefresh, filterBar: cohortFilterBarRef })
 </script>
 
 <style scoped>

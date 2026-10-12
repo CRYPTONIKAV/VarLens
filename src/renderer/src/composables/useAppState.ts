@@ -39,6 +39,8 @@ export interface AppStateReturn {
   // Navigation
   activeTab: Ref<'case' | 'cohort'>
   sidebarOpen: Ref<boolean>
+  /** CaseView's Shortlist tab is showing (its FilterToolbar is hidden). */
+  caseShortlistActive: Ref<boolean>
 
   // Filters
   currentFilters: Ref<Omit<VariantFilter, 'case_id'>>
@@ -158,6 +160,7 @@ export function createAppState(): AppStateReturn {
   // Navigation
   const activeTab = guarded(ref<'case' | 'cohort'>('case'))
   const sidebarOpen = ref(true)
+  const caseShortlistActive = ref(false)
 
   // Filters
   const currentFilters = ref<Omit<VariantFilter, 'case_id'>>({})
@@ -323,6 +326,7 @@ export function createAppState(): AppStateReturn {
     // Navigation
     activeTab,
     sidebarOpen,
+    caseShortlistActive,
 
     // Filters
     currentFilters,
