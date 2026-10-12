@@ -6,6 +6,10 @@ import {
   type SeverityFilterTarget
 } from '../../../shared/filters/severity-filter'
 import { buildNullCheckSql, isNullCheckOperator } from '../../../shared/filters/column-null-check'
+import {
+  COHORT_SUMMARY_FILTER_COLUMNS,
+  UnsupportedCohortColumnFilterError
+} from '../../../shared/filters/cohort-column-filter-keys'
 import type { ColumnFilter } from '../../../shared/types/column-filters'
 import type { CohortSearchParams } from '../../../shared/types/cohort'
 import { POSTGRES_VARIANT_COLUMN_DEFINITIONS } from './postgres-variant-columns'
@@ -189,27 +193,17 @@ const SUMMARY_SORT_COLUMNS: Record<string, string> = {
 }
 
 /**
- * Column-filter key → stored `cvs` column expression. Covers the base columns
- * the live builder filters in `addColumnFilters`; the counts (carrier_count,
- * het_count, hom_count) are stored columns here, so they map to plain columns
- * rather than aggregate expressions, and cohort_frequency to the read-time
- * expression over them.
+ * Column-filter key → stored `cvs` column expression, derived from the shared
+ * cohort key list so both backends accept the same keys (#528). The counts are
+ * stored columns here, so they map to plain columns rather than aggregate
+ * expressions, and cohort_frequency to the read-time expression over them.
  */
-const SUMMARY_COLUMN_FILTER_SQL: Record<string, string> = {
-  chr: 'cvs.chr',
-  pos: 'cvs.pos',
-  gene_symbol: 'cvs.gene_symbol',
-  consequence: 'cvs.consequence',
-  func: 'cvs.func',
-  clinvar: 'cvs.clinvar',
-  gnomad_af: 'cvs.gnomad_af',
-  cadd_phred: 'cvs.cadd',
-  transcript: 'cvs.transcript',
-  carrier_count: 'cvs.carrier_count',
-  cohort_frequency: SUMMARY_FREQUENCY_SQL,
-  het_count: 'cvs.het_count',
-  hom_count: 'cvs.hom_count'
-}
+const SUMMARY_COLUMN_FILTER_SQL: Record<string, string> = Object.fromEntries(
+  Object.entries(COHORT_SUMMARY_FILTER_COLUMNS).map(([key, column]) => [
+    key,
+    key === 'cohort_frequency' ? SUMMARY_FREQUENCY_SQL : `cvs.${column}`
+  ])
+)
 
 const NUMERIC_COLUMN_FILTERS = new Set<string>([
   'pos',
@@ -495,8 +489,10 @@ export function buildSummaryQueryParts(
     for (const column of Object.keys(params.column_filters)) {
       const filter = params.column_filters[column]
       if (filter === undefined) continue
+      if (EXTENSION_COLUMN_KEYS.has(column)) continue // EXISTS probes below
       const expression = SUMMARY_COLUMN_FILTER_SQL[column]
-      if (expression === undefined) continue
+      // Never drop a filter: an unknown key must fail, not widen the result.
+      if (expression === undefined) throw new UnsupportedCohortColumnFilterError([column])
       const condition = buildColumnFilterCondition(column, expression, filter, addParam)
       if (condition === '') continue
       whereParts.push(condition)

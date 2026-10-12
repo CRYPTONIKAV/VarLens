@@ -242,6 +242,32 @@ describe('buildSummaryQueryParts', () => {
     expect(result.parts.whereParts.join(' ')).toContain('cvs.gnomad_af')
   })
 
+  it('filters cDNA, protein change and OMIM on their stored cvs columns (#528)', () => {
+    const where = buildSummaryQueryParts(
+      {
+        column_filters: {
+          cdna: { operator: 'like', value: 'c.1' },
+          aa_change: { operator: '=', value: 'p.M1fs' },
+          omim_mim_number: { operator: '=', value: '113705' }
+        }
+      },
+      TOTAL_CASES
+    ).parts.whereParts.join(' ')
+
+    expect(where).toContain('cvs.cdna ILIKE')
+    expect(where).toContain('cvs.aa_change')
+    expect(where).toContain('cvs.omim_mim_number')
+  })
+
+  it('throws for a column filter it cannot express instead of dropping it (#528)', () => {
+    expect(() =>
+      buildSummaryQueryParts(
+        { column_filters: { qual: { operator: '>', value: 30 } } },
+        TOTAL_CASES
+      )
+    ).toThrow('Unsupported cohort column filter(s): qual')
+  })
+
   it('builds aggregate-aware ORDER BY against direct cvs columns', () => {
     const carrier = buildSummaryQueryParts(
       { sort_by: 'carrier_count', sort_order: 'asc' },
