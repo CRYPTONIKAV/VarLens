@@ -29,6 +29,7 @@ import { resolveRowLinks, useLinkResolvers } from '../../composables/useLinkReso
 import { useVariantLinks } from '../../composables/useVariantLinks'
 import { useSharedMenu } from '../table-cells/shared-menu'
 import { useResultSetKeys } from '../table-state/useResultSetKeys'
+import { formatHgvs } from '../../utils/formatters'
 import {
   useTableKeyboardNav,
   isInputFocused,
@@ -93,7 +94,7 @@ interface VariantCell {
  * Fields `cdna` and `aa_change` come straight from the `Variant` row shape.
  * The `c.`/`p.` prefixes are conventional HGVS markers — we only prepend
  * them if the stored value doesn't already start with them (annotators
- * vary — VEP stores bare notation, SnpEff stores prefixed).
+ * vary — VEP stores `ENST…:c.…`, which is left as is).
  */
 function variantCell(row: ShortlistRow): VariantCell {
   if (row.variant_type === 'sv') {
@@ -127,7 +128,8 @@ function variantCell(row: ShortlistRow): VariantCell {
 }
 
 function ensureHgvsPrefix(value: string, prefix: 'c.' | 'p.'): string {
-  return value.startsWith(prefix) ? value : `${prefix}${value}`
+  const text = formatHgvs(value) ?? value
+  return text.includes(':') || text.startsWith(prefix) ? text : `${prefix}${text}`
 }
 
 function pinFor(row: ShortlistRow): 'starred' | 'clinvar' | null {

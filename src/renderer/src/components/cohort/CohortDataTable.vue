@@ -111,11 +111,11 @@
       </template>
 
       <template #[`item.cdna`]="{ value }">
-        <span class="hgvs-notation">{{ value ?? '--' }}</span>
+        <HgvsCell :value="value" />
       </template>
 
       <template #[`item.aa_change`]="{ value }">
-        <span class="hgvs-notation">{{ value ?? '--' }}</span>
+        <HgvsCell :value="value" />
       </template>
 
       <template #[`item.consequence`]="{ value }">
@@ -206,6 +206,7 @@ import {
   GeneSymbolCell,
   ConsequenceCell,
   AnnotationsCell,
+  HgvsCell,
   AnnotationsHeader,
   ExpandToggleCell,
   ExternalLinkCell,

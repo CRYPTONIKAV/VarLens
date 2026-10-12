@@ -174,6 +174,26 @@ describe('ShortlistTable', () => {
     expect(text).not.toContain('p.p.')
   })
 
+  it('keeps full VEP HGVS as is instead of prefixing c./p. onto the transcript', () => {
+    const wrapper = mount(ShortlistTable, {
+      props: {
+        rows: [
+          row({
+            variant_type: 'snv',
+            cdna: 'ENST00000361682.4:c.186C>T',
+            aa_change: 'ENSP00000354346.4:p.Ala62%3D'
+          } as Partial<ShortlistRow>)
+        ]
+      },
+      global: { plugins: [vuetify] }
+    })
+    const text = wrapper.text()
+    expect(text).toContain('ENST00000361682.4:c.186C>T')
+    expect(text).toContain('ENSP00000354346.4:p.Ala62=')
+    expect(text).not.toContain('c.ENST')
+    expect(text).not.toContain('p.ENSP')
+  })
+
   it('omits HGVS lines on SNV rows when cdna/aa_change are null', () => {
     const wrapper = mount(ShortlistTable, {
       props: {

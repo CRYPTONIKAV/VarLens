@@ -2,6 +2,8 @@
  * Formatting utilities for displaying variant data in human-readable format
  */
 
+import { decodeVepHgvs } from '../../../shared/utils/hgvs'
+
 /** Placeholder displayed for null/undefined/missing values in tables and data display */
 export const EMPTY_VALUE_PLACEHOLDER = '--'
 
@@ -90,4 +92,20 @@ export function getOriginalConsequence(formatted: string): string | null {
     if (value === formatted) return key
   }
   return null
+}
+
+/**
+ * One HGVS display string for every surface (tables, panel, Copy). VEP values
+ * are already `ENST….7:c.…` (the only place the transcript version lives), so
+ * the transcript is prefixed only onto bare SnpEff/JSON `c.…` values. Decoding
+ * here also fixes databases imported before VEP escapes were decoded at import.
+ */
+export function formatHgvs(
+  value: string | null | undefined,
+  transcript?: string | null
+): string | null {
+  if (value === null || value === undefined || value === '') return null
+  const decoded = decodeVepHgvs(value)
+  const hasTranscript = transcript !== null && transcript !== undefined && transcript !== ''
+  return hasTranscript && !decoded.includes(':') ? `${transcript}:${decoded}` : decoded
 }

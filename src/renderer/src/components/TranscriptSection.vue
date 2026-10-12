@@ -8,7 +8,7 @@ import {
   normalizeTranscriptId,
   type UnifiedTranscriptRow
 } from '../utils/mergeTranscripts'
-import { EMPTY_VALUE_PLACEHOLDER } from '../utils/formatters'
+import { EMPTY_VALUE_PLACEHOLDER, formatHgvs } from '../utils/formatters'
 import IconButton from './common/IconButton.vue'
 
 /** WCAG 2.1.1: Vuetify's horizontally scrollable table wrapper must be keyboard-reachable. */
@@ -300,11 +300,11 @@ async function handleUse(row: UnifiedTranscriptRow): Promise<void> {
         </template>
 
         <template #[`item.cdna`]="{ value }">
-          <span class="text-body-medium">{{ value ?? EMPTY_VALUE_PLACEHOLDER }}</span>
+          <span class="text-body-medium">{{ formatHgvs(value) ?? EMPTY_VALUE_PLACEHOLDER }}</span>
         </template>
 
         <template #[`item.aa_change`]="{ value }">
-          <span class="text-body-medium">{{ value ?? EMPTY_VALUE_PLACEHOLDER }}</span>
+          <span class="text-body-medium">{{ formatHgvs(value) ?? EMPTY_VALUE_PLACEHOLDER }}</span>
         </template>
 
         <template #[`item.status`]="{ item }">

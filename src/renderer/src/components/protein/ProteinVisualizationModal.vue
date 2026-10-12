@@ -162,6 +162,7 @@ import {
 } from '../../../../shared/utils/protein-utils'
 import { logService } from '../../services/LogService'
 import { variantInterval } from '../../utils/variant-interval'
+import { formatHgvs } from '../../utils/formatters'
 import { isIpcError, unwrapIpcResult } from '../../../../shared/types/errors'
 
 interface Props {
@@ -198,7 +199,7 @@ const genomicVariant = computed<GenomicVariant | null>(() => {
   const label =
     interval !== null
       ? `${'sv_type' in v ? (v.sv_type ?? '') : ''} ${v.chr}:${interval.start}-${interval.end}`.trim()
-      : (v.aa_change ?? `${v.chr}:${v.pos} ${v.ref}>${v.alt}`)
+      : (formatHgvs(v.aa_change) ?? `${v.chr}:${v.pos} ${v.ref}>${v.alt}`)
   return {
     chr: v.chr,
     pos: v.pos,
@@ -275,7 +276,7 @@ watch(
 // notation in the cDNA column when columns are shifted).
 function toLolli(v: Variant | CohortVariant, highlighted: boolean): LollipopVariant | null {
   let proteinPosition = parseProteinPosition(v.aa_change)
-  let aaChange = v.aa_change
+  let aaChange = formatHgvs(v.aa_change)
 
   // Fallback: try parsing the cdna field if aa_change didn't yield a valid position
   if (proteinPosition === null && 'cdna' in v && typeof v.cdna === 'string') {
