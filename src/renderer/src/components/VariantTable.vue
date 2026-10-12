@@ -5,6 +5,7 @@
       <div ref="topScrollbarInnerRef" class="top-scrollbar-inner"></div>
     </div>
 
+    <QueryErrorAlert :error="loadError" :stale="variants.length > 0" @retry="loadVariants" />
     <TableLoadIndicator :active="showStale" :message="liveMessage" />
     <v-data-table-server
       ref="dataTableRef"
@@ -226,6 +227,7 @@
       <!-- Empty state when filters produce no results -->
       <template #no-data>
         <div
+          v-if="loadError === null"
           class="text-center pa-8"
           role="status"
           aria-label="No variants match the current filters"
@@ -288,6 +290,7 @@ import { onKeyStroke } from '@vueuse/core'
 import VariantColumnHeader from './variant-table/VariantColumnHeader.vue'
 import AnnotationDialogs from './AnnotationDialogs.vue'
 import TableLoadIndicator from './table-state/TableLoadIndicator.vue'
+import QueryErrorAlert from './table-state/QueryErrorAlert.vue'
 import TableSkeletonRows from './table-state/TableSkeletonRows.vue'
 import { useTableLoadingState } from '../composables/useTableLoadingState'
 import { useVariantColumns } from './variant-table/columns'
@@ -412,6 +415,7 @@ const {
   variants,
   totalCount,
   loading,
+  loadError,
   page,
   itemsPerPage,
   sortBy,
@@ -660,9 +664,7 @@ onMounted(async () => {
   const tableEl = dataTableRef.value?.$el as HTMLElement | undefined
   if (tableEl) {
     const tableWrapperEl = tableEl.querySelector('.v-table__wrapper') as HTMLElement | null
-    if (tableWrapperEl) {
-      initScrollSync(tableWrapperEl)
-    }
+    if (tableWrapperEl) initScrollSync(tableWrapperEl)
   }
 })
 
