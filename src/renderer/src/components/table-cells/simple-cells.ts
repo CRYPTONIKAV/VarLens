@@ -13,7 +13,7 @@
  */
 import { h, type FunctionalComponent, type PropType, type VNode } from 'vue'
 import { mdiOpenInNew } from '@mdi/js'
-import { EMPTY_VALUE_PLACEHOLDER, formatHgvs } from '../../utils/formatters'
+import { EMPTY_VALUE_PLACEHOLDER, formatConsequence, formatHgvs } from '../../utils/formatters'
 import {
   formatCaddScore,
   formatPosition,
@@ -260,8 +260,8 @@ export const ConsequenceCell: FunctionalComponent<{
   impact?: string | null
   asChip?: boolean
 }> = (props) => {
-  if (!hasText(props.consequence)) return h('span', EMPTY_VALUE_PLACEHOLDER)
-  const text = props.consequence.replace(/_/g, ' ')
+  if (!hasText(props.consequence)) return placeholder()
+  const text = formatConsequence(props.consequence)
   const tooltip = { 'data-tooltip': props.consequence, 'data-tooltip-location': TOOLTIP_TOP }
   if (props.asChip !== true) return h('span', tooltip, text)
   const color = hasText(props.impact) ? getImpactColor(props.impact) : 'grey'

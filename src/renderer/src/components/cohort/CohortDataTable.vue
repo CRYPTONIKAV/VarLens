@@ -124,7 +124,7 @@
 
       <!-- Functional consequence -->
       <template #[`item.func`]="{ value }">
-        <span class="consequence-cell">{{ value ?? '--' }}</span>
+        <ConsequenceCell class="consequence-cell" :consequence="value" />
       </template>
 
       <!-- ClinVar with dynamic link from store -->
