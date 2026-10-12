@@ -23,11 +23,17 @@ import { tokenize, isDslInput } from './tokenizer'
 import {
   COHORT_ONLY_COLUMNS,
   findColumn,
+  INFO_FIELD_OPERATORS,
   isColumnInScope,
   type FilterScope
 } from './column-registry'
 import { NUMERIC_COLUMN_FILTER_KEYS } from '../../../shared/filters/column-filter-validation'
 import { EXTENSION_FILTERABLE_DOTTED_KEYS } from '../../../shared/types/variant-extension-registry-data'
+import {
+  INFO_FIELD_PREFIX,
+  infoFieldFilterProblem,
+  isValidInfoKey
+} from '../../../shared/filters/info-field-filter'
 
 /** Operators for fields outside the DSL registry (extension and cohort keys). */
 const NUMERIC_OPERATORS: DslOperator[] = ['=', '!=', '<', '>', '<=', '>=']
@@ -261,6 +267,14 @@ class Parser {
       this.errors.push({ message, position: token.position, length: token.value.length || 1 })
       return null
     }
+    if (colToken.value.toLowerCase().startsWith(INFO_FIELD_PREFIX)) {
+      if (this.scope === 'cohort') {
+        return fail(
+          `'${colToken.value}' is a per-case INFO field and cannot filter the cohort view`
+        )
+      }
+      return buildInfoRule(colToken, operator, raw, valueToken, fail)
+    }
     const colDef = findColumn(colToken.value)
     const column = colDef?.key ?? colToken.value
     // Reject before any request: the other view's backend cannot filter on it
@@ -298,6 +312,40 @@ class Parser {
     // Text values are never coerced: chr:=:01 must stay '01'
     return { type: 'rule', column, operator, value: text }
   }
+}
+
+/**
+ * `info.<KEY>` (#538): a custom VCF INFO value, case view only. The key keeps
+ * its case (VCF IDs are case-sensitive); `=`/`!=`/`~` values stay text — the
+ * backend compares numerically only where both sides are numbers.
+ */
+function buildInfoRule(
+  colToken: Token,
+  operator: DslOperator,
+  raw: string | null,
+  valueToken: Token,
+  fail: (message: string, token?: Token) => null
+): DslFilterRule | null {
+  const key = colToken.value.slice(INFO_FIELD_PREFIX.length)
+  const column = `${INFO_FIELD_PREFIX}${key}`
+  if (!isValidInfoKey(key)) return fail(`'${key}' is not a valid INFO field name`)
+  if (operator === 'is:null' || operator === 'is:notnull') {
+    return { type: 'rule', column, operator, value: null }
+  }
+  if (!INFO_FIELD_OPERATORS.includes(operator)) {
+    return fail(`Operator '${operator}' is not supported for '${column}'`, valueToken)
+  }
+  const text = raw ?? ''
+  if (operator === '~' && text.trim() === '') {
+    return fail(`'${column}:~' needs a non-empty value`, valueToken)
+  }
+  const problem = infoFieldFilterProblem(column, {
+    operator: operator === '~' ? 'like' : (operator as '=' | '!=' | '<' | '>' | '<=' | '>='),
+    value: text
+  })
+  if (problem !== null) return fail(problem, valueToken)
+  const range = operator !== '=' && operator !== '!=' && operator !== '~'
+  return { type: 'rule', column, operator, value: range ? Number(text) : text }
 }
 
 /**

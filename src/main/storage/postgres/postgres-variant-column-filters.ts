@@ -8,6 +8,7 @@ import { escapeLikePattern } from '../../database/search/search-clause-emitter'
 import { isSeverityKey } from '../../../shared/config/severity.config'
 import { buildNullCheckSql, isNullCheckOperator } from '../../../shared/filters/column-null-check'
 import { severityFilterOperands, severityFilterSql } from '../../../shared/filters/severity-filter'
+import { infoFieldFilterSql, infoFieldKey } from '../../../shared/filters/info-field-filter'
 import type { CarrierRanks } from '../../../shared/sql/cohort-representative'
 import type { VariantFilter } from '../../../shared/types/database'
 import { POSTGRES_VARIANT_COLUMN_DEFINITIONS } from './postgres-variant-columns'
@@ -34,13 +35,25 @@ export function addPostgresColumnFilters(
   if (filter.column_filters === undefined) return
 
   const unsupportedColumns = Object.keys(filter.column_filters).filter(
-    (column) => POSTGRES_VARIANT_COLUMN_DEFINITIONS[column] === undefined
+    (column) =>
+      POSTGRES_VARIANT_COLUMN_DEFINITIONS[column] === undefined && infoFieldKey(column) === null
   )
   if (unsupportedColumns.length > 0) {
     throw new Error(`Unsupported PostgreSQL column filter(s): ${unsupportedColumns.join(', ')}`)
   }
 
   for (const [column, filterDef] of Object.entries(filter.column_filters)) {
+    const infoKey = infoFieldKey(column)
+    if (infoKey !== null) {
+      // #538: key and values were validated by assertValidColumnFilterValues.
+      const clause = infoFieldFilterSql(infoKey, filterDef, {
+        dialect: 'postgres',
+        infoJson: 'v.info_json',
+        bind: (value) => addParam(value)
+      })
+      if (clause !== null) addWhere(clause)
+      continue
+    }
     const definition = POSTGRES_VARIANT_COLUMN_DEFINITIONS[column]
     const sqlColumn = definition.sql
     const { operator, value } = filterDef

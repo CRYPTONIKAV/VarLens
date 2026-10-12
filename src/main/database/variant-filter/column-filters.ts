@@ -1,6 +1,7 @@
 import { isSeverityKey } from '../../../shared/config/severity.config'
 import { severityFilterOperands } from '../../../shared/filters/severity-filter'
-import { whereSeverity } from './severity-filter'
+import { boundPredicate, PLACEHOLDER, whereSeverity } from './severity-filter'
+import { infoFieldFilterSql, infoFieldKey } from '../../../shared/filters/info-field-filter'
 import { sql } from 'kysely'
 import { escapeLikePattern } from '../search/search-clause-emitter'
 import { NUMERIC_COLUMN_FILTER_KEYS } from '../../../shared/filters/column-filter-validation'
@@ -99,6 +100,24 @@ function applyColumnFilter(
   return query
 }
 
+/** `info.<KEY>` filter (#538); key and values were validated by assertValidColumnFilterValues. */
+function whereInfoField(
+  query: VariantQueryBuilder,
+  key: string,
+  filterDef: ColumnFilterDef
+): VariantQueryBuilder {
+  const bound: Array<string | number> = []
+  const text = infoFieldFilterSql(key, filterDef, {
+    dialect: 'sqlite',
+    infoJson: 'variants.info_json',
+    bind: (value) => {
+      bound.push(value)
+      return PLACEHOLDER
+    }
+  })
+  return text === null ? query : query.where(boundPredicate(text, bound))
+}
+
 /**
  * Column filters on bare `variants` keys (dynamic, type-aware). Dotted
  * extension keys are handled by the extension join step; unknown keys are
@@ -119,6 +138,11 @@ export function applyBareColumnFilters(
   if (filter.column_filters === undefined) return query
   let filtered = query
   for (const [column, filterDef] of Object.entries(filter.column_filters)) {
+    const infoKey = infoFieldKey(column)
+    if (infoKey !== null) {
+      filtered = whereInfoField(filtered, infoKey, filterDef)
+      continue
+    }
     const baseColumn = SORTABLE_COLUMNS[column]
     if (baseColumn === undefined) continue
     // Impact and ClinVar match by normalised category, like the cohort view.
