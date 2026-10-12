@@ -29,7 +29,8 @@ import { resolveRowLinks, useLinkResolvers } from '../../composables/useLinkReso
 import { useVariantLinks } from '../../composables/useVariantLinks'
 import { useSharedMenu } from '../table-cells/shared-menu'
 import { useResultSetKeys } from '../table-state/useResultSetKeys'
-import { EMPTY_VALUE_PLACEHOLDER, formatHgvs } from '../../utils/formatters'
+import { formatHgvs } from '../../utils/formatters'
+import { EMPTY_VALUE_PLACEHOLDER, UNKNOWN_VALUE_GLYPH } from '../../config/displayConfig'
 import { formatBpLength } from '../../utils/variant-interval'
 import {
   useTableKeyboardNav,
@@ -107,14 +108,14 @@ function variantCell(row: ShortlistRow): VariantCell {
   }
   if (row.variant_type === 'cnv') {
     return {
-      primary: `${row.chr}:${row.pos} CNV CN=${row.cnv_copy_number ?? '?'}`,
+      primary: `${row.chr}:${row.pos} CNV CN=${row.cnv_copy_number ?? UNKNOWN_VALUE_GLYPH}`,
       cdna: null,
       protein: null
     }
   }
   if (row.variant_type === 'str') {
     return {
-      primary: `${row.chr}:${row.pos} STR ${row.str_alt_copies ?? '?'} copies`,
+      primary: `${row.chr}:${row.pos} STR ${row.str_alt_copies ?? UNKNOWN_VALUE_GLYPH} copies`,
       cdna: null,
       protein: null
     }

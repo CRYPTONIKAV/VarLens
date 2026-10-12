@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { buildStatus, formatBpLength, normalizeBuild } from '../../utils/variant-interval'
-import { EMPTY_VALUE_PLACEHOLDER } from '../../utils/formatters'
+import { EMPTY_VALUE_PLACEHOLDER } from '../../config/displayConfig'
 
 /**
  * Conditional detail section showing SV/CNV/STR-specific data based on variant_type.

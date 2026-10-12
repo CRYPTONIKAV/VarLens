@@ -3,7 +3,7 @@
  * covers, which exons it touches, and whether its build matches the gene model.
  */
 import type { GeneExon } from '../../../shared/types/protein'
-import { EMPTY_VALUE_PLACEHOLDER } from './formatters'
+import { EMPTY_VALUE_PLACEHOLDER } from '../config/displayConfig'
 
 /** rest.ensembl.org serves GRCh38 gene models only, so the gene-structure axis is GRCh38. */
 export const GENE_MODEL_ASSEMBLY = 'GRCh38'
@@ -67,7 +67,7 @@ export function exonsInInterval(exons: GeneExon[], interval: VariantInterval): G
   return exons.filter((e) => e.end >= interval.start && e.start <= interval.end)
 }
 
-/** Signed base-pair length as bp / kb / Mb; an em dash when absent. */
+/** Unsigned base-pair length as bp / kb / Mb; the shared empty glyph when absent. */
 export function formatBpLength(length: number | null | undefined): string {
   if (length === null || length === undefined) return EMPTY_VALUE_PLACEHOLDER
   const abs = Math.abs(length)

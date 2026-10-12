@@ -13,7 +13,8 @@
  */
 import { h, type FunctionalComponent, type PropType, type VNode } from 'vue'
 import { mdiOpenInNew } from '@mdi/js'
-import { EMPTY_VALUE_PLACEHOLDER, formatConsequence, formatHgvs } from '../../utils/formatters'
+import { formatConsequence, formatHgvs } from '../../utils/formatters'
+import { EMPTY_VALUE_PLACEHOLDER } from '../../config/displayConfig'
 import {
   formatCaddScore,
   formatPosition,

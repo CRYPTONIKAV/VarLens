@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { EMPTY_VALUE_PLACEHOLDER, formatHgvs } from '../../../src/renderer/src/utils/formatters'
+import { formatHgvs } from '../../../src/renderer/src/utils/formatters'
+import { EMPTY_VALUE_PLACEHOLDER } from '../../../src/renderer/src/config/displayConfig'
 import { formatScoreValue } from '../../../src/renderer/src/utils/scoreThresholds'
 import {
   formatScientific,

@@ -3,7 +3,7 @@
  *
  * Based on clinical interpretation guidelines from RESEARCH.md
  */
-import { EMPTY_VALUE_PLACEHOLDER } from './formatters'
+import { EMPTY_VALUE_PLACEHOLDER } from '../config/displayConfig'
 
 interface ScoreThreshold {
   green: number // Threshold for benign/low concern

@@ -217,7 +217,7 @@ import {
   LinkOutsCell
 } from '../table-cells'
 import CarrierExpandedRow from './CarrierExpandedRow.vue'
-import { EMPTY_VALUE_PLACEHOLDER } from '../../utils/formatters'
+import { EMPTY_VALUE_PLACEHOLDER } from '../../config/displayConfig'
 import { useDatabaseStore } from '../../stores/databaseStore'
 import AcmgQuickMenu from '../table-cells/AcmgQuickMenu.vue'
 import { provideAcmgQuickMenu } from '../table-cells/acmg-quick-menu'

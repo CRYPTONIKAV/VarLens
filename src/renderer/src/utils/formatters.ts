@@ -3,10 +3,8 @@
  */
 
 import { decodeVepHgvs } from '../../../shared/utils/hgvs'
-import { CONSEQUENCE_LABELS } from '../config/displayConfig'
+import { CONSEQUENCE_LABELS, CONSEQUENCE_JOIN } from '../config/displayConfig'
 import { VEP_CONSEQUENCE_SEPARATOR } from '../../../shared/config/vep.config'
-
-export { EMPTY_VALUE_PLACEHOLDER } from '../config/displayConfig'
 
 /**
  * Format a consequence type to human-readable form
@@ -18,32 +16,7 @@ export function formatConsequence(raw: string): string {
   return raw
     .split(VEP_CONSEQUENCE_SEPARATOR)
     .map((term) => CONSEQUENCE_LABELS[term] || term.replace(/_/g, ' '))
-    .join(', ')
-}
-
-/**
- * Format multiple consequences (comma-separated) to human-readable form
- * @param raw - Comma-separated consequence string
- * @returns Formatted consequence string
- */
-export function formatConsequences(raw: string): string {
-  if (!raw) return ''
-  return raw
-    .split(',')
-    .map((c) => formatConsequence(c.trim()))
-    .join(', ')
-}
-
-/**
- * Get the original consequence value (for tooltips)
- * @param formatted - The formatted consequence
- * @returns Original database value or the input if not found
- */
-export function getOriginalConsequence(formatted: string): string | null {
-  for (const [key, value] of Object.entries(CONSEQUENCE_LABELS)) {
-    if (value === formatted) return key
-  }
-  return null
+    .join(CONSEQUENCE_JOIN)
 }
 
 /**

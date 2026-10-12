@@ -6,6 +6,12 @@
 /** Shown for null/undefined/empty values in tables and data displays */
 export const EMPTY_VALUE_PLACEHOLDER = '--'
 
+/** Joins several consequence labels of one call */
+export const CONSEQUENCE_JOIN = ', '
+
+/** Shown in compact one-line summaries for a missing numeric value (e.g. CN=?) */
+export const UNKNOWN_VALUE_GLYPH = '?'
+
 /** Details-panel title for a call with neither a gene symbol nor an STR repeat id */
 export const NO_GENE_LABEL = 'Unknown Gene'
 

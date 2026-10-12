@@ -8,7 +8,8 @@ import {
   normalizeTranscriptId,
   type UnifiedTranscriptRow
 } from '../utils/mergeTranscripts'
-import { EMPTY_VALUE_PLACEHOLDER, formatHgvs } from '../utils/formatters'
+import { formatHgvs } from '../utils/formatters'
+import { EMPTY_VALUE_PLACEHOLDER } from '../config/displayConfig'
 import IconButton from './common/IconButton.vue'
 
 /** WCAG 2.1.1: Vuetify's horizontally scrollable table wrapper must be keyboard-reachable. */
