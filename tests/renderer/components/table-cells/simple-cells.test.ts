@@ -131,7 +131,9 @@ describe('link cells', () => {
     expect(linked.wrapper.find('.external-link').exists()).toBe(true)
     const unlinked = host(() => h(GeneSymbolCell, { value: 'TTN', linkUrl: null }))
     expect(unlinked.wrapper.text()).toBe('TTN')
-    expect(host(() => h(GeneSymbolCell, { value: null })).wrapper.text()).toBe('--')
+    const empty = host(() => h(GeneSymbolCell, { value: null })).wrapper
+    expect(empty.text()).toBe('--')
+    expect(empty.find('.gene-symbol').exists()).toBe(false) // letter-spacing renders '- -'
   })
 
   it('ClinVarCell renders a labelled chip with a delegated tooltip', async () => {

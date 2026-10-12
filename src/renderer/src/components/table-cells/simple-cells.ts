@@ -165,9 +165,9 @@ export const GeneSymbolCell: FunctionalComponent<
   { value: string | null; linkUrl?: string | null },
   LinkEmits
 > = (props, { emit }) => {
-  if (!hasText(props.value) || !hasText(props.linkUrl)) {
-    return h('span', { class: 'gene-symbol' }, props.value ?? EMPTY_VALUE_PLACEHOLDER)
-  }
+  // Placeholder outside the letter-spaced .gene-symbol span, which renders '--' as '- -'
+  if (!hasText(props.value)) return placeholder()
+  if (!hasText(props.linkUrl)) return h('span', { class: 'gene-symbol' }, props.value)
   const ariaLabel = `${props.value} (opens in a new tab)`
   return h(
     'a',

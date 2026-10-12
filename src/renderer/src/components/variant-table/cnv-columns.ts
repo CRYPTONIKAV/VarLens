@@ -1,5 +1,6 @@
 import type { ColumnDef } from './columns'
 import { formatBpLength } from '../../utils/variant-interval'
+import { EMPTY_VALUE_PLACEHOLDER } from '../../config/displayConfig'
 
 /**
  * Column definitions for CNV (copy number variant) variant tables.
@@ -20,7 +21,8 @@ export const cnvHeaders: ColumnDef[] = [
     key: 'end_pos',
     sortable: true,
     align: 'end',
-    value: (item) => (item as { end_pos?: number | null }).end_pos?.toLocaleString() ?? null
+    value: (item) =>
+      (item as { end_pos?: number | null }).end_pos?.toLocaleString() ?? EMPTY_VALUE_PLACEHOLDER
   },
   { title: 'Type', key: 'sv_type', sortable: true },
   {

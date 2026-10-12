@@ -151,7 +151,11 @@
       </template>
 
       <template #[`item.cohort_frequency`]="{ value }">
-        {{ value !== null && value !== undefined ? (value * 100).toFixed(2) + '%' : '--' }}
+        {{
+          value !== null && value !== undefined
+            ? (value * 100).toFixed(2) + '%'
+            : EMPTY_VALUE_PLACEHOLDER
+        }}
       </template>
 
       <!-- Het / Hom combined column -->
@@ -213,6 +217,7 @@ import {
   LinkOutsCell
 } from '../table-cells'
 import CarrierExpandedRow from './CarrierExpandedRow.vue'
+import { EMPTY_VALUE_PLACEHOLDER } from '../../utils/formatters'
 import { useDatabaseStore } from '../../stores/databaseStore'
 import AcmgQuickMenu from '../table-cells/AcmgQuickMenu.vue'
 import { provideAcmgQuickMenu } from '../table-cells/acmg-quick-menu'

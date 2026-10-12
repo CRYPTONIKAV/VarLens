@@ -29,7 +29,7 @@ import { resolveRowLinks, useLinkResolvers } from '../../composables/useLinkReso
 import { useVariantLinks } from '../../composables/useVariantLinks'
 import { useSharedMenu } from '../table-cells/shared-menu'
 import { useResultSetKeys } from '../table-state/useResultSetKeys'
-import { formatHgvs } from '../../utils/formatters'
+import { EMPTY_VALUE_PLACEHOLDER, formatHgvs } from '../../utils/formatters'
 import { formatBpLength } from '../../utils/variant-interval'
 import {
   useTableKeyboardNav,
@@ -305,7 +305,7 @@ onKeyStroke(
     </template>
 
     <template #[`item.gnomad_af`]="{ item }">
-      {{ item.gnomad_af == null ? '—' : item.gnomad_af.toExponential(2) }}
+      {{ item.gnomad_af == null ? EMPTY_VALUE_PLACEHOLDER : item.gnomad_af.toExponential(2) }}
     </template>
 
     <!-- Native buttons + static icons: no VBtn/VIcon instances per row -->

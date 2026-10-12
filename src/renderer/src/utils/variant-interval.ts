@@ -3,6 +3,7 @@
  * covers, which exons it touches, and whether its build matches the gene model.
  */
 import type { GeneExon } from '../../../shared/types/protein'
+import { EMPTY_VALUE_PLACEHOLDER } from './formatters'
 
 /** rest.ensembl.org serves GRCh38 gene models only, so the gene-structure axis is GRCh38. */
 export const GENE_MODEL_ASSEMBLY = 'GRCh38'
@@ -68,7 +69,7 @@ export function exonsInInterval(exons: GeneExon[], interval: VariantInterval): G
 
 /** Signed base-pair length as bp / kb / Mb; an em dash when absent. */
 export function formatBpLength(length: number | null | undefined): string {
-  if (length === null || length === undefined) return '—'
+  if (length === null || length === undefined) return EMPTY_VALUE_PLACEHOLDER
   const abs = Math.abs(length)
   // Unsigned: the sign only encodes DEL vs DUP, which the SV type already shows
   if (abs >= 1_000_000) return `${(abs / 1_000_000).toFixed(2)} Mb`

@@ -4,8 +4,7 @@
 
 import { decodeVepHgvs } from '../../../shared/utils/hgvs'
 
-/** Placeholder displayed for null/undefined/missing values in tables and data display */
-export const EMPTY_VALUE_PLACEHOLDER = '--'
+export { EMPTY_VALUE_PLACEHOLDER } from '../config/displayConfig'
 
 /**
  * Map of consequence types to human-readable labels
