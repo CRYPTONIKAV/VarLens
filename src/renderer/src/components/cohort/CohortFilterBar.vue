@@ -477,6 +477,7 @@ const {
   applySuggestion
 } = useDslFilterIntegration({
   urlRoute: 'cohort',
+  scope: 'cohort',
   presets: () => allPresets.value,
   searchQueryRef: searchTerm,
   emitFilters: emitFilterChange,

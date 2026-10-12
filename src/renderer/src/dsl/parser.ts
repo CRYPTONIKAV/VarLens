@@ -20,7 +20,12 @@ import type {
   Token
 } from './types'
 import { tokenize, isDslInput } from './tokenizer'
-import { findColumn } from './column-registry'
+import {
+  COHORT_ONLY_COLUMNS,
+  findColumn,
+  isColumnInScope,
+  type FilterScope
+} from './column-registry'
 import { NUMERIC_COLUMN_FILTER_KEYS } from '../../../shared/filters/column-filter-validation'
 import { EXTENSION_FILTERABLE_DOTTED_KEYS } from '../../../shared/types/variant-extension-registry-data'
 
@@ -48,7 +53,10 @@ class Parser {
   private pos: number = 0
   private errors: DslParseError[] = []
 
-  constructor(tokens: Token[]) {
+  constructor(
+    tokens: Token[],
+    private readonly scope: FilterScope
+  ) {
     this.tokens = tokens
   }
 
@@ -255,6 +263,13 @@ class Parser {
     }
     const colDef = findColumn(colToken.value)
     const column = colDef?.key ?? colToken.value
+    // Reject before any request: the other view's backend cannot filter on it
+    if (colDef && !isColumnInScope(colDef, this.scope)) {
+      return fail(`'${colToken.value}' is a per-case field and cannot filter the cohort view`)
+    }
+    if (this.scope === 'case' && COHORT_ONLY_COLUMNS.some((c) => c.key === column)) {
+      return fail(`'${colToken.value}' is a cohort field and cannot filter a single case`)
+    }
     const numeric = colDef ? colDef.type === 'numeric' : NUMERIC_COLUMN_FILTER_KEYS.has(column)
     if (!colDef && !numeric && !EXTENSION_FILTERABLE_DOTTED_KEYS.has(column)) {
       return fail(`Unknown field '${colToken.value}'`)
@@ -291,7 +306,7 @@ class Parser {
  * If the input doesn't look like DSL (no colons in filter pattern),
  * returns it as an FTS query instead.
  */
-export function parseDsl(input: string): DslParseResult {
+export function parseDsl(input: string, scope: FilterScope = 'case'): DslParseResult {
   const trimmed = input.trim()
 
   if (trimmed === '') {
@@ -303,7 +318,7 @@ export function parseDsl(input: string): DslParseResult {
   }
 
   const tokens = tokenize(trimmed)
-  const parser = new Parser(tokens)
+  const parser = new Parser(tokens, scope)
   const { ast, errors } = parser.parse()
 
   return { ast, isDsl: true, ftsQuery: '', errors }

@@ -8,11 +8,15 @@
 import { ref, computed, watch } from 'vue'
 import { parseDsl } from '../dsl/parser'
 import { translateAst, type TranslationResult } from '../dsl/translator'
-import { getAutocompleteSuggestions, type Suggestion } from '../dsl/autocomplete'
+import {
+  getAutocompleteSuggestions,
+  type Suggestion,
+  type SuggestionScope
+} from '../dsl/autocomplete'
 import type { DslParseError, DslParseResult } from '../dsl/types'
 import { useDebounceFn } from '@vueuse/core'
 
-export function useDslSearch(presetNames: () => string[]) {
+export function useDslSearch(presetNames: () => string[], scope: SuggestionScope = 'case') {
   /** Raw input text in the search bar */
   const rawInput = ref('')
 
@@ -56,7 +60,7 @@ export function useDslSearch(presetNames: () => string[]) {
   /** Update parse result and suggestions */
   function updateParse(): void {
     const input = rawInput.value.trim()
-    parseResult.value = parseDsl(input)
+    parseResult.value = parseDsl(input, scope)
 
     if (parseResult.value.ast && parseResult.value.errors.length === 0) {
       translationResult.value = translateAst(parseResult.value.ast)
@@ -67,7 +71,7 @@ export function useDslSearch(presetNames: () => string[]) {
 
   /** Update autocomplete suggestions (called on every keystroke) */
   function updateSuggestions(): void {
-    suggestions.value = getAutocompleteSuggestions(rawInput.value, presetNames())
+    suggestions.value = getAutocompleteSuggestions(rawInput.value, presetNames(), scope)
   }
 
   // Debounce parse (250 ms — the only typing delay before a table query, see
@@ -78,6 +82,8 @@ export function useDslSearch(presetNames: () => string[]) {
     updateSuggestions()
     debouncedParse()
   })
+  // An empty bar already offers the field picker
+  updateSuggestions()
 
   /** Apply a suggestion from the autocomplete dropdown */
   function applySuggestion(suggestion: Suggestion): void {
@@ -109,7 +115,7 @@ export function useDslSearch(presetNames: () => string[]) {
     rawInput.value = ''
     parseResult.value = { ast: null, isDsl: false, ftsQuery: '', errors: [] }
     translationResult.value = { columnFilters: {}, presetNames: [], errors: [] }
-    suggestions.value = []
+    updateSuggestions()
   }
 
   return {

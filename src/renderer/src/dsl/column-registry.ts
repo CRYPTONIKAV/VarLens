@@ -117,7 +117,13 @@ export const FILTER_COLUMNS: readonly FilterColumnDef[] = [
     label: 'Impact',
     aliases: ['impact', 'csq', 'effect'],
     type: 'categorical',
-    operators: CATEGORICAL_OPERATORS
+    operators: CATEGORICAL_OPERATORS,
+    commonValues: [
+      { value: 'HIGH', label: 'High impact' },
+      { value: 'MODERATE', label: 'Moderate impact' },
+      { value: 'LOW', label: 'Low impact' },
+      { value: 'MODIFIER', label: 'Modifier' }
+    ]
   },
   {
     key: 'func',
@@ -186,6 +192,43 @@ export const FILTER_COLUMNS: readonly FilterColumnDef[] = [
     operators: ['=', '!=', '~']
   }
 ] as const
+
+const COUNT_OPERATORS: DslOperator[] = ['=', '!=', '<', '>', '<=', '>=']
+
+/**
+ * Cohort-summary fields (numeric column-filter keys) outside the shared
+ * registry: only the cohort view can filter on them.
+ */
+export const COHORT_ONLY_COLUMNS: readonly FilterColumnDef[] = [
+  {
+    key: 'carrier_count',
+    label: 'Carriers',
+    aliases: [],
+    type: 'numeric',
+    operators: COUNT_OPERATORS
+  },
+  {
+    key: 'cohort_frequency',
+    label: 'Cohort frequency',
+    aliases: [],
+    type: 'numeric',
+    operators: COUNT_OPERATORS
+  },
+  {
+    key: 'het_count',
+    label: 'Heterozygous carriers',
+    aliases: [],
+    type: 'numeric',
+    operators: COUNT_OPERATORS
+  },
+  {
+    key: 'hom_count',
+    label: 'Homozygous carriers',
+    aliases: [],
+    type: 'numeric',
+    operators: COUNT_OPERATORS
+  }
+]
 
 /** All known column keys for fast lookup */
 const columnMap = new Map<string, FilterColumnDef>()

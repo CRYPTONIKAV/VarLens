@@ -7,11 +7,16 @@
       density="compact"
       :placeholder="placeholder"
       :prepend-inner-icon="mdiMagnify"
-      hide-details
+      hide-details="auto"
       clearable
-      :error="hasErrors"
+      :error-messages="errorMessages"
       class="dsl-search-bar"
       aria-label="Search variants (text or filter DSL)"
+      aria-autocomplete="list"
+      :aria-expanded="String(listOpen)"
+      :aria-controls="listOpen ? suggestionsId : undefined"
+      :aria-activedescendant="activeOptionId"
+      :aria-invalid="hasErrors ? 'true' : undefined"
       :class="{ 'dsl-mode': isDslMode, 'fts-mode': !isDslMode && localInput !== '' }"
       @update:model-value="onInput"
       @click:clear="onClear"
@@ -48,27 +53,42 @@
       :activator-props="MENU_ACTIVATOR_ARIA_RESET"
       :close-on-content-click="false"
       :open-on-click="false"
+      :open-on-arrow="false"
+      :capture-focus="false"
       max-height="400"
       width="500"
       offset="4"
       location="bottom start"
     >
+      <!-- Focus stays in the input (combobox); options are tracked via aria-activedescendant -->
       <v-list
         v-if="suggestions.length > 0"
         :id="suggestionsId"
+        role="listbox"
+        tabindex="-1"
+        aria-label="Filter suggestions"
         density="compact"
         class="dsl-suggestion-list"
       >
         <template v-for="(item, idx) in groupedSuggestions" :key="idx">
-          <!-- Category header -->
-          <v-list-subheader v-if="item.isHeader" class="text-overline">
-            {{ item.headerLabel }}
+          <v-list-subheader v-if="item.kind === 'header'" class="text-overline" role="presentation">
+            {{ item.label }}
           </v-list-subheader>
+          <div
+            v-else-if="item.kind === 'hint'"
+            class="px-4 py-1 text-caption text-medium-emphasis"
+            role="presentation"
+          >
+            {{ item.label }}
+            <span v-if="item.description"> — {{ item.description }}</span>
+          </div>
 
-          <!-- Suggestion item -->
           <v-list-item
             v-else
-            :active="isHighlighted(item)"
+            :id="optionId(item.optionIndex!)"
+            role="option"
+            :aria-selected="item.optionIndex === highlightedIndex ? 'true' : 'false'"
+            :active="item.optionIndex === highlightedIndex"
             @mousedown.prevent="handleSelect(item.suggestion!)"
           >
             <template #prepend>
@@ -94,19 +114,11 @@
         </template>
       </v-list>
     </v-menu>
-
-    <!-- Error tooltip (shown on hover when there are parse errors) -->
-    <v-tooltip
-      v-if="hasErrors"
-      :text="errors[0]?.message"
-      location="bottom"
-      :activator="textFieldRef?.$el"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, useId } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, onMounted, useId } from 'vue'
 import type { VTextField } from 'vuetify/components'
 import type { Suggestion } from '../dsl/autocomplete'
 import { mdiMagnify } from '@mdi/js'
@@ -157,43 +169,55 @@ watch(
 )
 
 const hasErrors = computed(() => props.errors.length > 0)
+/** Shown persistently below the field (VField links them via aria-describedby) */
+const errorMessages = computed(() => props.errors.map((e) => e.message))
 
 interface GroupedItem {
-  isHeader: boolean
-  headerLabel?: string
+  kind: 'header' | 'hint' | 'option'
+  label?: string
+  description?: string
   suggestion?: Suggestion
+  /** Index among selectable options (kind 'option' only) */
+  optionIndex?: number
 }
 
-/** Format suggestions with category headers for the dropdown */
+const HEADER_LABELS: Record<string, string> = {
+  column: 'FIELDS',
+  operator: 'OPERATORS',
+  value: 'VALUES',
+  combinator: 'COMBINE WITH',
+  preset: 'PRESETS'
+}
+
+/** Suggestions with category headers; hints are text, not selectable options */
 const groupedSuggestions = computed((): GroupedItem[] => {
   const items: GroupedItem[] = []
   let lastCategory = ''
-
-  const headerLabels: Record<string, string> = {
-    column: 'COLUMNS',
-    operator: 'OPERATORS',
-    value: 'VALUES',
-    combinator: 'COMBINE WITH',
-    preset: 'PRESETS'
-  }
-
+  let optionIndex = 0
   for (const s of props.suggestions) {
-    if (s.category !== lastCategory && s.category !== 'hint') {
-      items.push({
-        isHeader: true,
-        headerLabel: headerLabels[s.category] ?? s.category.toUpperCase()
-      })
+    if (s.category === 'hint') {
+      items.push({ kind: 'hint', label: s.label, description: s.description })
+      continue
+    }
+    if (s.category !== lastCategory) {
+      items.push({ kind: 'header', label: HEADER_LABELS[s.category] ?? s.category.toUpperCase() })
       lastCategory = s.category
     }
-    items.push({ isHeader: false, suggestion: s })
+    items.push({ kind: 'option', suggestion: s, optionIndex: optionIndex++ })
   }
   return items
 })
 
 const highlightedIndex = ref(-1)
 
-const selectableSuggestions = computed(() =>
-  groupedSuggestions.value.filter((item) => !item.isHeader && item.suggestion != null)
+const selectableSuggestions = computed(() => props.suggestions.filter((s) => s.category !== 'hint'))
+
+const listOpen = computed(() => showMenu.value && props.suggestions.length > 0)
+
+const optionId = (index: number): string => `${suggestionsId}-option-${index}`
+
+const activeOptionId = computed(() =>
+  listOpen.value && highlightedIndex.value >= 0 ? optionId(highlightedIndex.value) : undefined
 )
 
 watch(
@@ -202,12 +226,6 @@ watch(
     highlightedIndex.value = -1
   }
 )
-
-function isHighlighted(item: GroupedItem): boolean {
-  if (highlightedIndex.value < 0) return false
-  const active = selectableSuggestions.value[highlightedIndex.value]
-  return active?.suggestion === item.suggestion
-}
 
 function onInput(value: string | null): void {
   const v = value ?? ''
@@ -224,51 +242,42 @@ function onEnter(): void {
   emit('apply')
 }
 
+/** Move the highlighted option, opening the list if needed */
+function moveHighlight(event: KeyboardEvent, step: 1 | -1): void {
+  const count = selectableSuggestions.value.length
+  if (count === 0) return
+  event.preventDefault()
+  if (!showMenu.value) showMenu.value = true
+  highlightedIndex.value = (highlightedIndex.value + step + count) % count
+}
+
+/** The option the keyboard highlight is on, if the list is open */
+function activeSuggestion(): Suggestion | undefined {
+  return listOpen.value ? selectableSuggestions.value[highlightedIndex.value] : undefined
+}
+
 // Single keydown handler: two @keydown.<modifier> bindings on one element
 // trip vue-tsc TS1117 against Vuetify 4.1+ types (vuejs/language-tools#6096).
 function onKeydown(event: KeyboardEvent): void {
+  if (event.isComposing) return
   if (event.key === 'ArrowDown') {
-    if (selectableSuggestions.value.length === 0) return
-    event.preventDefault()
-    if (!showMenu.value) {
-      showMenu.value = true
-    }
-    highlightedIndex.value = (highlightedIndex.value + 1) % selectableSuggestions.value.length
+    moveHighlight(event, 1)
   } else if (event.key === 'ArrowUp') {
-    if (selectableSuggestions.value.length === 0) return
-    event.preventDefault()
-    if (!showMenu.value) {
-      showMenu.value = true
-    }
-    highlightedIndex.value =
-      (highlightedIndex.value - 1 + selectableSuggestions.value.length) %
-      selectableSuggestions.value.length
-  } else if (event.key === 'Enter') {
-    if (
-      showMenu.value &&
-      highlightedIndex.value >= 0 &&
-      selectableSuggestions.value[highlightedIndex.value]?.suggestion
-    ) {
+    moveHighlight(event, -1)
+  } else if (event.key === 'Enter' || event.key === 'Tab') {
+    const active = activeSuggestion()
+    if (active) {
       event.preventDefault()
-      handleSelect(selectableSuggestions.value[highlightedIndex.value].suggestion!)
-      highlightedIndex.value = -1
-    } else {
+      handleSelect(active)
+    } else if (event.key === 'Enter') {
       onEnter()
     }
-  } else if (event.key === 'Tab') {
-    if (
-      showMenu.value &&
-      highlightedIndex.value >= 0 &&
-      selectableSuggestions.value[highlightedIndex.value]?.suggestion
-    ) {
-      event.preventDefault()
-      handleSelect(selectableSuggestions.value[highlightedIndex.value].suggestion!)
-      highlightedIndex.value = -1
-    }
-  } else if (event.key === 'Escape') {
+  } else if (event.key === 'Escape' && listOpen.value) {
+    // Dismiss the list only; focus stays in the input
+    event.preventDefault()
+    event.stopPropagation()
     showMenu.value = false
     highlightedIndex.value = -1
-    ;(event.target as HTMLElement | null)?.blur()
   }
 }
 
@@ -295,14 +304,22 @@ onBeforeUnmount(() => {
 })
 
 function handleSelect(suggestion: Suggestion): void {
+  highlightedIndex.value = -1
   emit('select-suggestion', suggestion)
   showMenu.value = true
 }
 
+function inputEl(): HTMLInputElement | null {
+  return (textFieldRef.value?.$el?.querySelector('input') as HTMLInputElement | null) ?? null
+}
+
+// VTextField's `role` prop lands on both the field wrapper and the input; the
+// combobox must be the input alone, so set it there directly.
+onMounted(() => inputEl()?.setAttribute('role', 'combobox'))
+
 /** Expose focus method for keyboard shortcut */
 function focus(): void {
-  const input = textFieldRef.value?.$el?.querySelector('input') as HTMLInputElement | null
-  input?.focus()
+  inputEl()?.focus()
 }
 
 defineExpose({ focus })

@@ -14,6 +14,7 @@ import { useDslSearch } from './useDslSearch'
 import { serializeColumnFilters } from '../dsl/translator'
 import type { ColumnFilter } from '../../../shared/types/column-filters'
 import type { DslParseError } from '../dsl/types'
+import type { SuggestionScope } from '../dsl/autocomplete'
 
 interface DslFilterIntegrationOptions {
   /** Saved presets, referenced in the DSL as `@name` (spaces → `_`, lower case) */
@@ -30,6 +31,8 @@ interface DslFilterIntegrationOptions {
   columnFiltersRef?: Ref<Record<string, ColumnFilter>>
   /** Mirror the raw search/DSL text into the URL query (`?q=`) for this view. */
   urlRoute?: ViewRoute
+  /** View being filtered; autocomplete offers only its fields (default: case) */
+  scope?: SuggestionScope
 }
 
 export function useDslFilterIntegration(options: DslFilterIntegrationOptions) {
@@ -48,7 +51,7 @@ export function useDslFilterIntegration(options: DslFilterIntegrationOptions) {
     applySuggestion,
     clear: clearDsl,
     parseNow
-  } = useDslSearch(() => options.presets().map((p) => presetKey(p.name)))
+  } = useDslSearch(() => options.presets().map((p) => presetKey(p.name)), options.scope)
 
   // Unknown @presets, found on Enter (presets may still be loading while typing)
   const presetErrors = ref<DslParseError[]>([])
