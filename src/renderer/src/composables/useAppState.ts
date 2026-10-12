@@ -17,6 +17,7 @@ import type { CohortVariant } from '../../../shared/types/cohort'
 import type VariantTable from '../components/VariantTable.vue'
 import type FilterToolbar from '../components/FilterToolbar.vue'
 import type CohortViewComponent from '../components/CohortView.vue'
+import type { CarrierTarget } from './useCarrierTarget'
 
 /** Shape of the object returned by createAppState / useAppState. */
 export interface SelectedCaseInput {
@@ -45,7 +46,8 @@ export interface AppStateReturn {
   filteredCount: Ref<number>
   totalCount: Ref<number>
   hasSort: Ref<boolean>
-  initialSearch: Ref<string | undefined>
+  /** Exact variant the cohort view navigated to (see useCarrierTarget). */
+  carrierTarget: Ref<CarrierTarget | null>
 
   // Panel
   panelOpen: Ref<boolean>
@@ -164,7 +166,7 @@ export function createAppState(): AppStateReturn {
   const filteredCount = ref(0)
   const totalCount = ref(0)
   const hasSort = ref(false)
-  const initialSearch = ref<string | undefined>(undefined)
+  const carrierTarget = ref<CarrierTarget | null>(null)
 
   // Panel
   const panelOpenRaw = ref(false)
@@ -329,7 +331,7 @@ export function createAppState(): AppStateReturn {
     filteredCount,
     totalCount,
     hasSort,
-    initialSearch,
+    carrierTarget,
 
     // Panel
     panelOpen,

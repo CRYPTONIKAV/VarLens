@@ -81,6 +81,7 @@ import { formatError } from '../utils/ipc-result'
 import { useUrlParam } from '../composables/useUrlState'
 import { useFilterUrlParam } from '../composables/useViewUrlBindings'
 import { useCohortBuildUrlParam } from '../composables/useCohortBuildUrlParam'
+import type { CarrierTarget } from '../composables/useCarrierTarget'
 import { providePanelResolutionStatus } from '../composables/usePanelResolutionStatus'
 
 // Create and provide filter state for child components (CohortTable, CohortFilterBar)
@@ -139,17 +140,7 @@ const lastSeenGeneration = ref(dataGeneration.value)
 const burdenMounted = ref(false)
 
 defineEmits<{
-  'navigate-to-case': [
-    payload: {
-      caseId: number
-      chr: string
-      pos: number
-      ref: string
-      alt: string
-      geneSymbol: string | null
-      cdna: string | null
-    }
-  ]
+  'navigate-to-case': [target: CarrierTarget]
   'row-click': [variant: CohortVariant]
   deselect: []
 }>()

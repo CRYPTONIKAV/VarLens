@@ -198,7 +198,6 @@ interface Props {
   filteredCount: number
   totalCount: number
   hasSort?: boolean
-  initialSearch?: string
   columns?: ColumnDef[]
   /** Additional active filter chips from column filters (appended to drawer filter chips) */
   columnActiveFilters?: ActiveFilter[]
@@ -305,7 +304,6 @@ const {
   handleGeneClear,
   searchGeneSymbols,
   loadFilterOptions,
-  setInitialSearch,
   emitFilters,
   exportToExcel: composableExportToExcel
 } = useFilterState(
@@ -561,17 +559,6 @@ provide<FilterDrawerState>('filterDrawerState', {
   },
   onClearTypeFilter: handleClearTypeFilter
 })
-
-// Watch initialSearch prop to pre-populate search from cohort navigation
-watch(
-  () => props.initialSearch,
-  (newSearch) => {
-    if (newSearch !== undefined && newSearch !== '') {
-      setInitialSearch(newSearch)
-    }
-  },
-  { immediate: true }
-)
 
 // Export to Excel - wrapper that bridges composable result to emit events
 const { writeBlockedReason } = usePermissions()
