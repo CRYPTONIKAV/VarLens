@@ -19,6 +19,7 @@ import * as directives from 'vuetify/directives'
 import ShortlistTable from '../../../../src/renderer/src/components/shortlist/ShortlistTable.vue'
 import { createPinia, setActivePinia } from 'pinia'
 import type { ShortlistRow } from '../../../../src/shared/types/shortlist'
+import { clinvarDisplayText } from '../../../../src/shared/config/severity.config'
 
 // ShortlistTable resolves its Links column through the external-links store
 beforeEach(() => setActivePinia(createPinia()))
@@ -172,6 +173,15 @@ describe('ShortlistTable', () => {
     // Must NOT double-prefix (e.g. "c.c.456C>T")
     expect(text).not.toContain('c.c.')
     expect(text).not.toContain('p.p.')
+  })
+
+  it('renders ClinVar with the shared ClinVar cell, not the raw token', () => {
+    const wrapper = mount(ShortlistTable, {
+      props: { rows: [row({ clinvar: 'Uncertain_significance' } as Partial<ShortlistRow>)] },
+      global: { plugins: [vuetify] }
+    })
+    expect(wrapper.text()).toContain(clinvarDisplayText('Uncertain_significance'))
+    expect(wrapper.text()).not.toContain('Uncertain_significance')
   })
 
   it('keeps full VEP HGVS as is instead of prefixing c./p. onto the transcript', () => {

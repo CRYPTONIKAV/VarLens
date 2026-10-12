@@ -23,7 +23,7 @@ import { mdiStar, mdiStarOutline, mdiDotsVertical } from '@mdi/js'
 import RankScoreTooltip from './RankScoreTooltip.vue'
 import { useRowHoverTarget } from './useRowHoverTarget'
 import { CellChip, CellIcon } from '../table-cells/cell-components'
-import { LinkOutsCell } from '../table-cells/simple-cells'
+import { ClinVarCell, LinkOutsCell } from '../table-cells/simple-cells'
 import { linksColumn } from '../variant-table/columns'
 import { resolveRowLinks, useLinkResolvers } from '../../composables/useLinkResolvers'
 import { useVariantLinks } from '../../composables/useVariantLinks'
@@ -302,6 +302,10 @@ onKeyStroke(
           {{ variantCell(item).protein }}
         </div>
       </div>
+    </template>
+
+    <template #[`item.clinvar`]="{ item }">
+      <ClinVarCell :significance="item.clinvar" />
     </template>
 
     <template #[`item.gnomad_af`]="{ item }">
