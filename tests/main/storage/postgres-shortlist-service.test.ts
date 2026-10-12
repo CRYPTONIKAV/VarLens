@@ -105,6 +105,39 @@ describe('PostgresShortlistService', () => {
     })
   })
 
+  it('never ClinVar-pins a disease-locus STR without a ClinVar annotation (#531)', async () => {
+    const strRow = variant({
+      id: 7,
+      variant_type: 'str',
+      consequence: null,
+      clinvar: null,
+      _str_status: 'pathologic',
+      _str_disease: 'Huntington disease'
+    } as Partial<Variant>)
+    const service = new PostgresShortlistService({
+      pool: { query: vi.fn().mockResolvedValue({ rows: [] }) } as never,
+      schema: 'public',
+      filterPresets: { getPreset: vi.fn() },
+      variants: { queryVariants: vi.fn().mockResolvedValue({ data: [strRow] }) } as never
+    })
+
+    const result = await service.getShortlist({
+      caseId: 1,
+      adHocConfig: {
+        ...CONFIG,
+        variantTypeScope: ['str'],
+        rankConfig: { ...CONFIG.rankConfig, clinvarPinTop: true }
+      }
+    })
+
+    expect(result.rows[0]).toMatchObject({
+      id: 7,
+      str_disease: 'Huntington disease',
+      rank_clinvar_pinned: false
+    })
+    expect(result.rows[0].rank_components.clinvar).toBe(0)
+  })
+
   it('rethrows a refused panel filter as-is and aggregates other failures', async () => {
     const make = (error: Error): PostgresShortlistService =>
       new PostgresShortlistService({

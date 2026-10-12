@@ -198,9 +198,7 @@ pathogenicity = knownLocus
                   ? 1.0   ← str.knownLocusPathogenicity
                   : 0.5   ← str.unknownLocusPathogenicity
 rarity        = 1.0       ← str.rarityPlaceholder
-clinvar       = knownLocus
-                  ? 0.9   ← str.knownLocusClinvarShortcut
-                  : mapClinvarBoost(row.clinvar)
+clinvar       = mapClinvarBoost(row.clinvar)
 phenotype     = row.hpo_sim_score ?? 0
 ```
 
@@ -209,7 +207,7 @@ phenotype     = row.hpo_sim_score ?? 0
 - **Intermediate → 0.66** — premutation-range or borderline expansions. Meaningful but not definitively pathologic.
 - **Known-locus pathogenicity 1.0** — pathologic / intermediate expansions at Mendelian loci (HTT, FMR1, C9orf72, etc.) are effectively always clinically relevant.
 - **Unknown-locus 0.5** — partial credit because we detected the expansion but without a known gene/disease link the clinical significance is unclear.
-- **Known-locus ClinVar short-circuit 0.9** — the DESIGN CALL. Mendelian STR loci are effectively always P/LP when their status is pathologic/intermediate, even if the source VCF lacks a direct ClinVar string match for the sample's exact expansion. Setting this to 0.9 matches the Likely_pathogenic boost level so these STRs participate in `clinvarPinTop`.
+- **ClinVar only from the annotation** — a known disease locus raises `pathogenicity`, never `clinvar`. Before #531 a 0.9 known-locus shortcut made every disease-locus STR (even normal status, no ClinVar) pin as "ClinVar P/LP".
 - **Rarity placeholder 1.0** — no STR frequency source.
 
 ---
@@ -438,7 +436,6 @@ Every tunable constant in one table. Source:
 | `str.normalOrUnknownImpact` | `0` | Impact for everything else |
 | `str.knownLocusPathogenicity` | `1.0` | Pathogenicity when `str_disease` is non-empty |
 | `str.unknownLocusPathogenicity` | `0.5` | Pathogenicity when `str_disease` is empty/null |
-| `str.knownLocusClinvarShortcut` | `0.9` | ClinVar bypass for known loci |
 | `str.rarityPlaceholder` | `1.0` | Rarity (no STR freq source) |
 
 ### 12.6 Cross-type defaults

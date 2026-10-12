@@ -565,9 +565,7 @@ describe('ShortlistService', () => {
     })
 
     it('applies clinvarPinTop: Pathogenic SNV floats above non-pinned SNVs', () => {
-      // Scope to SNV+indel so we test clinvar pinning in isolation without
-      // STR's known-locus shortcut (which synthesises clinvar=0.9 and would
-      // also pin, see score-str.ts).
+      // Scope to SNV+indel so the pinned partition is exactly the two ClinVar rows.
       const result = getShortlist({
         caseId: 1,
         adHocConfig: baseAdHocConfig({
@@ -589,6 +587,26 @@ describe('ShortlistService', () => {
       // Non-pinned SNVs must sort AFTER the pinned partition.
       const firstNonPinnedIdx = result.rows.findIndex((r) => !r.rank_clinvar_pinned)
       expect(firstNonPinnedIdx).toBeGreaterThanOrEqual(2)
+    })
+
+    it('a disease-locus STR without a ClinVar annotation is never ClinVar-pinned (#531)', () => {
+      const result = getShortlist({
+        caseId: 1,
+        adHocConfig: baseAdHocConfig({
+          variantTypeScope: ['str'],
+          rankConfig: {
+            weights: { impact: 1, pathogenicity: 1, rarity: 1, clinvar: 1, phenotype: 0 },
+            clinvarPinTop: true
+          }
+        })
+      })
+      expect(result.rows).toHaveLength(1)
+      expect(result.rows[0]).toMatchObject({
+        str_disease: 'Huntington disease',
+        clinvar: null,
+        rank_clinvar_pinned: false
+      })
+      expect(result.rows[0].rank_components.clinvar).toBe(0)
     })
 
     it('applies pinStarredTop: starred LOW row floats above Pathogenic', () => {
