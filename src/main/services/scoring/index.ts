@@ -170,3 +170,20 @@ export function compareScoredRows(
   }
   return a.id - b.id
 }
+
+/**
+ * Merge one scored Stage-1 page into the running top-N, ordered by
+ * {@link compareScoredRows}. Keeps memory at O(topN + page) however many
+ * candidates a case has; shared by both shortlist backends (#537).
+ */
+export function mergeTopScored(
+  kept: ScoredCandidate[],
+  scored: ScoredCandidate[],
+  topN: number,
+  tieBreakers?: SortItem[]
+): ScoredCandidate[] {
+  return kept
+    .concat(scored)
+    .sort((a, b) => compareScoredRows(a, b, tieBreakers))
+    .slice(0, topN)
+}

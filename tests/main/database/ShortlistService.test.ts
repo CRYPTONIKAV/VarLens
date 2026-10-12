@@ -391,25 +391,14 @@ describe('ShortlistService', () => {
       expect(result.rows.length).toBeLessThanOrEqual(2)
     })
 
-    it('reports totalCandidates >= rows.length (pre-slice)', () => {
-      // topN=1 → perTypeLimit = 4. The fixture seeds 8 SNVs (capped at 4),
-      // 1 indel, 1 SV, 1 CNV, 1 STR → totalCandidates = 4+1+1+1+1 = 8.
+    it('reports every eligible candidate in totalCandidates, independent of topN', () => {
+      // 7 snv + 1 indel + 1 sv + 1 cnv + 1 str = 11 — no topN-derived cap (#537).
       const result = getShortlist({
         caseId: 1,
         adHocConfig: baseAdHocConfig({ topN: 1 })
       })
-      expect(result.totalCandidates).toBeGreaterThanOrEqual(result.rows.length)
-      expect(result.totalCandidates).toBe(8)
+      expect(result.totalCandidates).toBe(11)
       expect(result.rows.length).toBe(1)
-    })
-
-    it('observes per-type cap at topN*4 during Stage 1', () => {
-      // topN=1 means only 4 SNV rows should make it past the cap despite 8 seeded.
-      const result = getShortlist({
-        caseId: 1,
-        adHocConfig: baseAdHocConfig({ topN: 1, variantTypeScope: ['snv'] })
-      })
-      expect(result.totalCandidates).toBe(4)
     })
 
     it('with larger topN, pre-slice count matches full fixture (no cap hit)', () => {
@@ -565,9 +554,7 @@ describe('ShortlistService', () => {
     })
 
     it('applies clinvarPinTop: Pathogenic SNV floats above non-pinned SNVs', () => {
-      // Scope to SNV+indel so we test clinvar pinning in isolation without
-      // STR's known-locus shortcut (which synthesises clinvar=0.9 and would
-      // also pin, see score-str.ts).
+      // Scope to SNV+indel so the pinned partition is exactly the two ClinVar rows.
       const result = getShortlist({
         caseId: 1,
         adHocConfig: baseAdHocConfig({
@@ -589,6 +576,26 @@ describe('ShortlistService', () => {
       // Non-pinned SNVs must sort AFTER the pinned partition.
       const firstNonPinnedIdx = result.rows.findIndex((r) => !r.rank_clinvar_pinned)
       expect(firstNonPinnedIdx).toBeGreaterThanOrEqual(2)
+    })
+
+    it('a disease-locus STR without a ClinVar annotation is never ClinVar-pinned (#531)', () => {
+      const result = getShortlist({
+        caseId: 1,
+        adHocConfig: baseAdHocConfig({
+          variantTypeScope: ['str'],
+          rankConfig: {
+            weights: { impact: 1, pathogenicity: 1, rarity: 1, clinvar: 1, phenotype: 0 },
+            clinvarPinTop: true
+          }
+        })
+      })
+      expect(result.rows).toHaveLength(1)
+      expect(result.rows[0]).toMatchObject({
+        str_disease: 'Huntington disease',
+        clinvar: null,
+        rank_clinvar_pinned: false
+      })
+      expect(result.rows[0].rank_components.clinvar).toBe(0)
     })
 
     it('applies pinStarredTop: starred LOW row floats above Pathogenic', () => {

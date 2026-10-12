@@ -170,12 +170,9 @@ export interface ShortlistConfig {
 export interface ShortlistResult {
   rows: ShortlistRow[]
   /**
-   * Post-cap count of rows that entered Stage 2 (after the `topN * 4`
-   * per-type Stage-1 limit). This is NOT the total number of rows that
-   * would match the filters without any cap — a case with 1000 HIGH
-   * SNVs and `topN=50` will report `totalCandidates <= 200` because
-   * Stage 1 bails out at the per-type cap. Use this for the UI
-   * "Scored (capped)" indicator, not as a filter-match metric.
+   * Number of eligible rows (all in-scope types) that were scored. Stage 1
+   * pages through every row matching the filters — there is no topN-based
+   * cap (#537) — so this equals the filter-match count of the scope.
    */
   totalCandidates: number
   presetUsed: FilterPreset | null

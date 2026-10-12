@@ -265,17 +265,6 @@ export const SCORING_CONFIG = {
     unknownLocusPathogenicity: 0.5,
 
     /**
-     * ClinVar short-circuit score applied to known-locus STRs
-     * regardless of the row's actual `clinvar` string. Mendelian
-     * expansion loci (HTT, FMR1, C9orf72, etc.) are treated as
-     * effectively-always-pathogenic when status is pathologic /
-     * intermediate, even if the source VCF lacks a direct ClinVar
-     * string match. The 0.9 matches the Likely_pathogenic boost level
-     * so these STRs participate in `clinvarPinTop`.
-     */
-    knownLocusClinvarShortcut: 0.9,
-
-    /**
      * `rarity` placeholder until STR population frequency is modelled.
      */
     rarityPlaceholder: 1.0

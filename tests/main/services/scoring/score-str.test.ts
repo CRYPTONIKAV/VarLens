@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { scoreStr } from '../../../../src/main/services/scoring/score-str'
+import { scoreRow } from '../../../../src/main/services/scoring'
 import { buildShortlistCandidate } from '../../../fixtures/shortlist/cross-type-variant-fixture'
 
+const WEIGHTS = { impact: 1, pathogenicity: 1, rarity: 1, clinvar: 1, phenotype: 0 }
+
 describe('scoreStr()', () => {
-  it('pathologic status with known disease -> all boosts', () => {
+  it('pathologic status with known disease -> impact + pathogenicity, no ClinVar without annotation', () => {
     const row = buildShortlistCandidate({
       variant_type: 'str',
       str_status: 'pathologic',
@@ -11,7 +14,7 @@ describe('scoreStr()', () => {
     })
     expect(scoreStr(row)).toMatchInlineSnapshot(`
       {
-        "clinvar": 0.9,
+        "clinvar": 0,
         "impact": 1,
         "pathogenicity": 1,
         "phenotype": 0,
@@ -75,15 +78,40 @@ describe('scoreStr()', () => {
     expect(scoreStr(row).clinvar).toBe(1)
   })
 
-  it('known locus short-circuits to 0.9 regardless of clinvar column', () => {
-    const row = buildShortlistCandidate({
-      variant_type: 'str',
-      str_status: 'pathologic',
-      str_disease: 'Friedreich ataxia',
-      clinvar: null
-    })
-    expect(scoreStr(row).clinvar).toBe(0.9)
-  })
+  it.each(['pathologic', 'intermediate', 'normal', null] as const)(
+    'known locus with status %s and no ClinVar annotation never claims ClinVar evidence',
+    (status) => {
+      const row = buildShortlistCandidate({
+        variant_type: 'str',
+        str_status: status,
+        str_disease: 'Friedreich ataxia',
+        clinvar: null
+      })
+      expect(scoreStr(row).clinvar).toBe(0)
+      expect(scoreRow(row, { weights: WEIGHTS, clinvarPinTop: true }).rank_clinvar_pinned).toBe(
+        false
+      )
+    }
+  )
+
+  it.each([
+    ['Pathogenic', 1],
+    ['Likely_pathogenic', 0.9]
+  ] as const)(
+    'known locus with ClinVar %s keeps the annotation boost and pins',
+    (clinvar, boost) => {
+      const row = buildShortlistCandidate({
+        variant_type: 'str',
+        str_status: 'pathologic',
+        str_disease: 'Friedreich ataxia',
+        clinvar
+      })
+      expect(scoreStr(row).clinvar).toBe(boost)
+      expect(scoreRow(row, { weights: WEIGHTS, clinvarPinTop: true }).rank_clinvar_pinned).toBe(
+        true
+      )
+    }
+  )
 
   it('rarity is always 1.0', () => {
     const row = buildShortlistCandidate({

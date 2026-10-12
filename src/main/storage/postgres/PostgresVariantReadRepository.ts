@@ -138,7 +138,7 @@ function emitCaseSearchTermSql(
 
 export const toPrefixTsQueryForTest = toPrefixTsQuery
 
-function normalizeVariantRow(row: Record<string, unknown>): Variant {
+export function normalizeVariantRow(row: Record<string, unknown>): Variant {
   const normalized: Record<string, unknown> = { ...row }
   for (const field of NUMERIC_VARIANT_FIELDS) {
     const value = normalized[field]
