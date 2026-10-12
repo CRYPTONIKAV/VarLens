@@ -133,7 +133,7 @@ function formatNumber(val: number | null | undefined, digits = 2): string {
 
 function formatText(val: string | null | undefined): string {
   if (val === null || val === undefined || val === '') return EMPTY_VALUE_PLACEHOLDER
-  return val
+  return val.replace(/_/g, ' ') // caller tokens such as full_mutation
 }
 </script>
 

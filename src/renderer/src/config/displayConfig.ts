@@ -6,6 +6,9 @@
 /** Shown for null/undefined/empty values in tables and data displays */
 export const EMPTY_VALUE_PLACEHOLDER = '--'
 
+/** Details-panel title for a call with neither a gene symbol nor an STR repeat id */
+export const NO_GENE_LABEL = 'Unknown Gene'
+
 /**
  * Map of consequence types to human-readable labels
  * Based on Sequence Ontology terms used in VEP/Ensembl
