@@ -29,6 +29,7 @@
             :suggestions="dslSuggestions ?? []"
             :is-dsl-mode="isDslMode ?? false"
             :errors="dslErrors ?? []"
+            :not-applied="isDraftPending ?? false"
             @update:raw-input="dslInput = $event"
             @apply="onDslApply?.()"
             @clear="onDslClear?.()"
@@ -509,6 +510,7 @@ const {
   dslSuggestions,
   isDslMode,
   dslErrors,
+  isDraftPending,
   onDslApply,
   onDslClear,
   onDslSuggestionSelect,

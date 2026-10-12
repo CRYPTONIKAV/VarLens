@@ -96,7 +96,12 @@ export function tokenize(input: string): Token[] {
           i++
         }
       }
-      if (i < input.length) i++ // skip closing quote
+      if (i >= input.length) {
+        // Unclosed quote: the parser rejects 'unknown' tokens
+        tokens.push({ type: 'unknown', value: input.slice(start), position: start })
+        continue
+      }
+      i++ // skip closing quote
       tokens.push({ type: 'value', value, position: start })
       continue
     }
@@ -127,7 +132,8 @@ export function tokenize(input: string): Token[] {
     }
 
     if (word === '') {
-      // Unknown character, skip
+      // Stray character (e.g. a lone '!'): the parser rejects 'unknown' tokens
+      tokens.push({ type: 'unknown', value: input[i], position: i })
       i++
       continue
     }
