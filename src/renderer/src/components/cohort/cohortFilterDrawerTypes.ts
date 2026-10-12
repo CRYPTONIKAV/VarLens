@@ -84,6 +84,7 @@ export interface CohortFilterDrawerState {
   dslSuggestions?: Ref<Suggestion[]>
   isDslMode?: ComputedRef<boolean>
   dslErrors?: ComputedRef<DslParseError[]>
+  isDraftPending?: ComputedRef<boolean>
   onDslApply?: () => void
   onDslClear?: () => void
   onDslSuggestionSelect?: (suggestion: Suggestion) => void

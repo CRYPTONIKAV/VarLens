@@ -9,7 +9,7 @@ import { ref, computed, watch } from 'vue'
 import { parseDsl } from '../dsl/parser'
 import { translateAst, type TranslationResult } from '../dsl/translator'
 import { getAutocompleteSuggestions, type Suggestion } from '../dsl/autocomplete'
-import type { DslParseResult } from '../dsl/types'
+import type { DslParseError, DslParseResult } from '../dsl/types'
 import { useDebounceFn } from '@vueuse/core'
 
 export function useDslSearch(presetNames: () => string[]) {
@@ -28,23 +28,30 @@ export function useDslSearch(presetNames: () => string[]) {
   const translationResult = ref<TranslationResult>({
     columnFilters: {},
     presetNames: [],
-    warnings: []
+    errors: []
   })
 
   /** Autocomplete suggestions for the dropdown */
   const suggestions = ref<Suggestion[]>([])
 
-  /** Whether the input is valid DSL (no parse errors) */
-  const isValid = computed(() => parseResult.value.errors.length === 0)
+  /** Parse errors plus expressions the filter map cannot represent (rejected as a whole) */
+  const errors = computed<DslParseError[]>(() => [
+    ...parseResult.value.errors,
+    ...translationResult.value.errors.map((message) => ({
+      message,
+      position: 0,
+      length: rawInput.value.length
+    }))
+  ])
+
+  /** Whether the input is valid DSL (nothing to reject) */
+  const isValid = computed(() => errors.value.length === 0)
 
   /** Whether the input is in DSL mode (contains DSL syntax) */
   const isDslMode = computed(() => parseResult.value.isDsl)
 
   /** FTS query (only populated when not in DSL mode) */
   const ftsQuery = computed(() => parseResult.value.ftsQuery)
-
-  /** Parse errors for inline display */
-  const errors = computed(() => parseResult.value.errors)
 
   /** Update parse result and suggestions */
   function updateParse(): void {
@@ -54,7 +61,7 @@ export function useDslSearch(presetNames: () => string[]) {
     if (parseResult.value.ast && parseResult.value.errors.length === 0) {
       translationResult.value = translateAst(parseResult.value.ast)
     } else {
-      translationResult.value = { columnFilters: {}, presetNames: [], warnings: [] }
+      translationResult.value = { columnFilters: {}, presetNames: [], errors: [] }
     }
   }
 
@@ -101,7 +108,7 @@ export function useDslSearch(presetNames: () => string[]) {
   function clear(): void {
     rawInput.value = ''
     parseResult.value = { ast: null, isDsl: false, ftsQuery: '', errors: [] }
-    translationResult.value = { columnFilters: {}, presetNames: [], warnings: [] }
+    translationResult.value = { columnFilters: {}, presetNames: [], errors: [] }
     suggestions.value = []
   }
 

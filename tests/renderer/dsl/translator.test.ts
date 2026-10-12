@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { translateAst } from '../../../src/renderer/src/dsl/translator'
+import { translateAst, serializeColumnFilters } from '../../../src/renderer/src/dsl/translator'
+import { parseDsl } from '../../../src/renderer/src/dsl/parser'
 import type { DslNode } from '../../../src/renderer/src/dsl/types'
 
 describe('translateAst', () => {
@@ -91,7 +92,7 @@ describe('translateAst', () => {
     expect(result.columnFilters.cadd.includeEmpty).toBe(true)
   })
 
-  it('warns when multiple conditions target the same column in an AND group', () => {
+  it('rejects repeated-field AND instead of dropping a bound', () => {
     const ast: DslNode = {
       type: 'group',
       combinator: 'AND',
@@ -101,9 +102,62 @@ describe('translateAst', () => {
       ]
     }
     const result = translateAst(ast)
-    expect(result.columnFilters.cadd.operator).toBe('<=')
-    expect(result.columnFilters.cadd.value).toBe(30)
-    expect(result.warnings).toHaveLength(1)
-    expect(result.warnings[0]).toContain("Multiple conditions on column 'cadd' are not supported")
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]).toContain('cadd:<=:30')
+  })
+})
+
+describe('translateAst Boolean fidelity (#526)', () => {
+  const translate = (input: string) => {
+    const parsed = parseDsl(input)
+    expect(parsed.errors).toEqual([])
+    return translateAst(parsed.ast!)
+  }
+
+  it.each([
+    ['cadd:>=:20 AND cadd:<=:30', 'only one condition per field'],
+    ['cadd:<:10 OR cadd:>:20', "OR is only supported between '=' conditions"],
+    ['gene:=:BRCA1 OR cadd:>=:20', "OR is only supported between '=' conditions"],
+    ['gene:=:BRCA1 OR gene:~:TP', "OR is only supported between '=' conditions"],
+    ['(gene:=:BRCA1 AND cadd:>=:20) OR gnomad_af:<:0.01', 'OR is only supported'],
+    ['@a OR @b', 'OR is only supported'],
+    ['@a AND @b', 'only one @preset'],
+    ['(gene:=:A OR gene:=:B) AND gene:=:C', 'only one condition per field']
+  ])('rejects %s', (input, message) => {
+    const result = translate(input)
+    expect(result.errors.join(' ')).toContain(message)
+  })
+
+  it.each([
+    ['gene:=:BRCA1 OR gene:=:TP53', { gene_symbol: { operator: 'in', value: ['BRCA1', 'TP53'] } }],
+    [
+      '(gene:=:BRCA1 OR symbol:=:TP53) AND cadd:>=:20',
+      {
+        gene_symbol: { operator: 'in', value: ['BRCA1', 'TP53'] },
+        cadd: { operator: '>=', value: 20, includeEmpty: true }
+      }
+    ],
+    ['gnomad_af:is:null', { gnomad_af: { operator: 'is_null', value: '' } }],
+    ['cnv.copy_number:<:2', { 'cnv.copy_number': { operator: '<', value: 2 } }],
+    ['clinvar:~:"Likely pathogenic"', { clinvar: { operator: 'like', value: 'Likely pathogenic' } }]
+  ])('translates %s faithfully', (input, expected) => {
+    const result = translate(input)
+    expect(result.errors).toEqual([])
+    expect(result.columnFilters).toEqual(expected)
+  })
+})
+
+describe('serializeColumnFilters', () => {
+  it.each([
+    'gene:=:BRCA1 OR gene:=:TP53',
+    'cadd:>=:20 AND gnomad_af:<:0.01 AND chr:=:01',
+    'clinvar:~:"Likely \\"odd\\" pathogenic" AND gnomad_af:is:notnull',
+    'cnv.copy_number:<:2 AND gene:=:"AND"'
+  ])('round-trips %s', (input) => {
+    const first = translateAst(parseDsl(input).ast!)
+    const text = serializeColumnFilters(first.columnFilters)
+    const second = parseDsl(text)
+    expect(second.errors).toEqual([])
+    expect(translateAst(second.ast!).columnFilters).toEqual(first.columnFilters)
   })
 })

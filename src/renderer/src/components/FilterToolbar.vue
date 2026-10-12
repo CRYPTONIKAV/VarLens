@@ -24,9 +24,10 @@
         :suggestions="dslSuggestions"
         :is-dsl-mode="isDslMode"
         :errors="dslErrors"
+        :not-applied="isDraftPending"
         class="filter-search-input mr-2"
         @update:raw-input="dslInput = $event"
-        @apply="applyDslFilters"
+        @apply="applyDslFilters()"
         @clear="handleDslClear"
         @select-suggestion="applySuggestion"
       />
@@ -168,6 +169,7 @@ import type { ActiveFilter } from '../../../shared/types/filters'
 import type { FilterDrawerState } from './filterDrawerTypes'
 import { ACMG_FILTER_OPTIONS, applyPresetStateToFilters, isPresetDiverged } from '../utils/filters'
 import { buildPresetFilterJson } from '../utils/filters/presetApplication'
+import { buildColumnFilterChips } from '../utils/filters/activeFilters'
 import { isWebRuntime } from '../utils/runtime-mode'
 import { usePermissions } from '../composables/usePermissions'
 import type { ExportFormat } from '../../../shared/ipc/domains/export'
@@ -277,8 +279,7 @@ function sanitizeUnsupportedVariantFilters(
   return next
 }
 
-// Forward ref for DSL column filters — populated by useDslFilterIntegration below.
-// Used in onFiltersUpdate closure to merge DSL column filters into the emitted payload.
+// DSL column filters (filled by useDslFilterIntegration below), merged in onFiltersUpdate.
 const dslColumnFiltersRef = ref<Record<string, ColumnFilter>>({})
 
 // Filter state composable - single source of truth for all filter logic
@@ -370,15 +371,17 @@ const {
   dslSuggestions,
   isDslMode,
   dslErrors,
+  isDraftPending,
   dslColumnFilters,
   hasDslFilters,
   applyDslFilters,
   handleDslClear,
+  removeDslCondition,
   applySuggestion
 } = useDslFilterIntegration({
   urlRoute: 'case',
   columnFiltersRef: dslColumnFiltersRef,
-  presetNames: () => allPresets.value.map((p) => p.name.toLowerCase().replace(/\s+/g, '_')),
+  presets: () => allPresets.value,
   searchQueryRef: computed({
     get: () => filters.value.searchQuery,
     set: (v) => {
@@ -390,13 +393,8 @@ const {
     if ('gnomad_af' in columnFilters) filters.value.maxGnomadAf = null
     if ('cadd' in columnFilters) filters.value.minCadd = null
   },
-  resolvePreset: (presetName) => {
-    const preset = allPresets.value.find(
-      (p) => p.name.toLowerCase().replace(/\s+/g, '_') === presetName
-    )
-    if (preset && !isPresetActive(preset.id)) {
-      handlePresetToggle(preset.id)
-    }
+  activatePreset: (id) => {
+    if (!isPresetActive(id)) void handlePresetToggle(id)
   }
 })
 
@@ -550,7 +548,8 @@ provide<FilterDrawerState>('filterDrawerState', {
   dslSuggestions,
   isDslMode,
   dslErrors,
-  onDslApply: applyDslFilters,
+  isDraftPending,
+  onDslApply: () => applyDslFilters(),
   onDslClear: handleDslClear,
   onDslSuggestionSelect: applySuggestion,
 
@@ -658,7 +657,8 @@ const mergedActiveFilterCount = computed(
 // Merge drawer active filters with column active filters
 const mergedActiveFiltersList = computed(() => [
   ...activeFiltersList.value,
-  ...(props.columnActiveFilters ?? [])
+  ...(props.columnActiveFilters ?? []),
+  ...buildColumnFilterChips(dslColumnFilters.value, 'dsl')
 ])
 
 // Clear all: reset drawer filters + presets + DSL + notify parent to clear column filters
@@ -671,7 +671,9 @@ function handleClearAll() {
 
 // Handle clear-filter — route column filter clears to parent
 function handleClearFilter(filterId: string) {
-  if (filterId.startsWith('col:')) {
+  if (filterId.startsWith('dsl:')) {
+    removeDslCondition(filterId.slice(4))
+  } else if (filterId.startsWith('col:')) {
     emit('clear-column-filter', filterId.slice(4))
   } else {
     clearFilter(filterId)

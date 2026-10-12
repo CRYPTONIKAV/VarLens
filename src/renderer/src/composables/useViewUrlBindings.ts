@@ -82,22 +82,19 @@ export function useFilterUrlParam(
   })
 }
 
-/** `?q=` — raw search / DSL text; applied like pressing Enter in the bar. */
+/** `?q=` — committed search / DSL text; restored like pressing Enter in the bar. */
 export function useSearchUrlParam(
   route: ViewRoute,
-  input: Ref<string>,
-  applyInput: () => void
+  applied: Ref<string>,
+  applyInput: (value: string) => void
 ): void {
   useUrlParam({
     route,
     key: 'q',
     priority: 3,
     history: 'replace',
-    read: () => (input.value.trim() === '' ? undefined : input.value),
-    apply: (value) => {
-      input.value = value ?? ''
-      applyInput()
-    }
+    read: () => (applied.value.trim() === '' ? undefined : applied.value),
+    apply: (value) => applyInput(value ?? '')
   })
 }
 

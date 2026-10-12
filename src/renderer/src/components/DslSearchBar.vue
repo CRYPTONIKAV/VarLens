@@ -21,6 +21,17 @@
     >
       <!-- Append inner: mode indicator -->
       <template #append-inner>
+        <v-chip
+          v-if="notApplied"
+          size="x-small"
+          color="warning"
+          variant="tonal"
+          label
+          class="mr-1"
+          title="Press Enter to apply"
+        >
+          Not applied
+        </v-chip>
         <v-chip v-if="isDslMode" size="x-small" color="primary" variant="tonal" label class="mr-1">
           DSL
         </v-chip>
@@ -116,6 +127,8 @@ interface Props {
   suggestions: Suggestion[]
   isDslMode: boolean
   errors: { message: string; position: number; length: number }[]
+  /** The text differs from the applied (committed) filter */
+  notApplied?: boolean
   placeholder?: string
 }
 
