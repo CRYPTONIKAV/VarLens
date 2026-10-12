@@ -34,6 +34,10 @@ import {
   type PanelIntervalLookup
 } from './postgres-panel-interval-resolver'
 import { assertValidColumnFilterValues } from '../../../shared/filters/column-filter-validation'
+import {
+  normalizeCohortColumnFilters,
+  COHORT_SUMMARY_FILTER_COLUMNS
+} from '../../../shared/filters/cohort-column-filter-keys'
 import { resolvedGtSql } from '../../../shared/sql/genotype-dosage'
 
 type CohortPool = Pick<Pool, 'query' | 'connect'>
@@ -98,19 +102,7 @@ const COLUMN_META_SUMMARY_COLUMNS: Record<string, string> = {
 
 /** Column-filter keys the cohort view accepts: summary columns and extension columns. */
 const SUPPORTED_COLUMN_FILTERS = new Set<string>([
-  'chr',
-  'pos',
-  'gene_symbol',
-  'consequence',
-  'func',
-  'clinvar',
-  'gnomad_af',
-  'cadd_phred',
-  'transcript',
-  'carrier_count',
-  'cohort_frequency',
-  'het_count',
-  'hom_count',
+  ...Object.keys(COHORT_SUMMARY_FILTER_COLUMNS),
   ...Object.keys(POSTGRES_VARIANT_COLUMN_DEFINITIONS).filter((key) => key.includes('.'))
 ])
 
@@ -164,8 +156,9 @@ export class PostgresCohortRepository {
   }
 
   async queryVariants(params: CohortSearchParams): Promise<CohortPaginatedResult> {
-    const resolvedParams = await this.panelIntervals.resolveCohortParams(params)
-    this.assertSupportedColumnFilters(resolvedParams)
+    const resolvedParams = this.withSupportedColumnFilters(
+      await this.panelIntervals.resolveCohortParams(params)
+    )
     const totalCases = await this.getTotalCases(this.pool, resolvedParams)
 
     // Every cohort read is served from cohort_variant_summary, so the page, an
@@ -360,8 +353,9 @@ export class PostgresCohortRepository {
     params: CohortSearchParams,
     options: { refreshWaitMs?: number } = {}
   ): AsyncGenerator<Record<string, unknown>> {
-    const resolvedParams = await this.panelIntervals.resolveCohortParams(params)
-    this.assertSupportedColumnFilters(resolvedParams)
+    const resolvedParams = this.withSupportedColumnFilters(
+      await this.panelIntervals.resolveCohortParams(params)
+    )
     // A file cannot carry the page's "refreshing" hint: wait for a pending
     // rebuild, bounded, or fail with CohortSummaryRefreshingError.
     await requireCurrentCohortSummary(
@@ -411,11 +405,13 @@ export class PostgresCohortRepository {
     return toNumber((result.rows[0] as { total_cases?: unknown } | undefined)?.total_cases)
   }
 
-  private assertSupportedColumnFilters(params: CohortSearchParams): void {
-    if (params.column_filters === undefined) return
+  /** Validated params with canonical column-filter keys (DSL `cadd` → `cadd_phred`, #528). */
+  private withSupportedColumnFilters(params: CohortSearchParams): CohortSearchParams {
+    if (params.column_filters === undefined) return params
     assertValidColumnFilterValues(params.column_filters)
+    const columnFilters = normalizeCohortColumnFilters(params.column_filters) ?? {}
 
-    const unsupportedColumns = Object.keys(params.column_filters).filter(
+    const unsupportedColumns = Object.keys(columnFilters).filter(
       (column) => !SUPPORTED_COLUMN_FILTERS.has(column)
     )
     if (unsupportedColumns.length > 0) {
@@ -423,6 +419,7 @@ export class PostgresCohortRepository {
         `Unsupported PostgreSQL cohort column filter(s): ${unsupportedColumns.join(', ')}`
       )
     }
+    return { ...params, column_filters: columnFilters }
   }
 
   private toCohortVariant(row: Record<string, unknown>, fallbackTotalCases: number): CohortVariant {

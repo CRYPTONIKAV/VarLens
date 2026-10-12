@@ -910,15 +910,16 @@ describe('CohortService', () => {
       expect(result.data[0].gene_symbol).toBe('BRCA1')
     })
 
-    it('should safely ignore unknown column keys', () => {
+    it('rejects unknown column keys instead of ignoring them (#528)', () => {
       const case1 = insertCase('Case 1')
       insertVariant(case1, '1', 100, 'A', 'G')
 
       rebuildSummary()
-      const result = cohortService.getCohortVariants({
-        column_filters: { nonexistent_column: { operator: 'like', value: 'test' } }
-      })
-      expect(result.total_count).toBe(1)
+      expect(() =>
+        cohortService.getCohortVariants({
+          column_filters: { nonexistent_column: { operator: 'like', value: 'test' } }
+        })
+      ).toThrow('Unsupported cohort column filter(s): nonexistent_column')
     })
 
     it('should skip empty string filter values', () => {
