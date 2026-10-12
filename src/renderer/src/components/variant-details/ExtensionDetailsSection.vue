@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { buildStatus, formatBpLength, normalizeBuild } from '../../utils/variant-interval'
 
 /**
  * Conditional detail section showing SV/CNV/STR-specific data based on variant_type.
@@ -9,6 +10,9 @@ import { computed } from 'vue'
  */
 
 interface ExtensionVariant {
+  chr?: string
+  pos?: number
+  alt?: string
   variant_type?: string | null
   sv_type?: string | null
   sv_length?: number | null
@@ -52,6 +56,8 @@ interface Props {
    * fields that may or may not be present depending on variant_type.
    */
   variant: Record<string, unknown> | null
+  /** Genome build of the variant's case; null when unknown */
+  genomeBuild?: string | null
 }
 
 const props = defineProps<Props>()
@@ -77,6 +83,41 @@ const strStatusColor = computed(() => {
   return 'default'
 })
 
+const isCall = computed(() => isSv.value || isCnv.value)
+const isBreakend = computed(() => variant.value?.sv_type?.toUpperCase() === 'BND')
+const buildLabel = computed(() => normalizeBuild(props.genomeBuild) ?? 'Unknown build')
+const buildChipColor = computed(() =>
+  buildStatus(props.genomeBuild) === 'unknown' ? 'warning' : 'default'
+)
+
+/** chr:start-end for an interval call; a breakend is a single position with its mate in ALT. */
+const coordinates = computed(() => {
+  const v = variant.value
+  if (v?.chr === undefined || v.pos === undefined) return '—'
+  const start = `${v.chr}:${v.pos.toLocaleString()}`
+  if (isBreakend.value) return `${start} (breakend, mate ${v.alt ?? 'not reported'})`
+  if (v.end_pos === null || v.end_pos === undefined) return `${start} (end not reported)`
+  return `${start}-${v.end_pos.toLocaleString()}`
+})
+
+const callerLabel = computed(() => {
+  const caller = variant.value?.caller ?? ''
+  return caller === '' ? 'Not reported' : caller
+})
+
+const hasSvEvidence = computed(() => {
+  const v = variant.value
+  return [v?._sv_support, v?._sv_dr, v?._sv_dv, v?._sv_vaf].some(
+    (x) => x !== null && x !== undefined
+  )
+})
+const hasCnvEvidence = computed(() => {
+  const v = variant.value
+  return [v?._cnv_copy_number, v?._cnv_gq, v?._cnv_ho_ref].some(
+    (x) => x !== null && x !== undefined
+  )
+})
+
 const sectionTitle = computed(() => {
   if (isSv.value) return 'Structural Variant'
   if (isCnv.value) return 'Copy Number Variant'
@@ -84,22 +125,11 @@ const sectionTitle = computed(() => {
   return ''
 })
 
-function formatLength(length: number | null | undefined): string {
-  if (length === null || length === undefined) return '—'
-  const abs = Math.abs(length)
-  if (abs >= 1_000_000) return `${(length / 1_000_000).toFixed(2)} Mb`
-  if (abs >= 1_000) return `${(length / 1_000).toFixed(2)} kb`
-  return `${length} bp`
-}
+const formatLength = formatBpLength
 
 function formatNumber(val: number | null | undefined, digits = 2): string {
   if (val === null || val === undefined) return '—'
   return val.toFixed(digits)
-}
-
-function formatInt(val: number | null | undefined): string {
-  if (val === null || val === undefined) return '—'
-  return val.toLocaleString()
 }
 
 function formatText(val: string | null | undefined): string {
@@ -112,20 +142,50 @@ function formatText(val: string | null | undefined): string {
   <div v-if="showSection" class="extension-section mb-4">
     <div class="d-flex align-center mb-2">
       <h3 class="text-title-small">{{ sectionTitle }}</h3>
-      <v-chip v-if="variant?.caller" size="x-small" class="ml-2" variant="tonal">
+      <v-chip v-if="isStr && variant?.caller" size="x-small" class="ml-2" variant="tonal">
         {{ variant.caller }}
       </v-chip>
     </div>
 
-    <!-- SV Section -->
-    <v-list v-if="isSv" density="compact" bg-color="transparent" class="pa-0">
-      <v-list-item v-if="variant?.sv_type" class="px-2">
+    <!-- Call context (#539): build, coordinates, type, length and caller together -->
+    <v-list
+      v-if="isCall"
+      density="compact"
+      bg-color="transparent"
+      class="pa-0"
+      data-testid="call-context"
+    >
+      <v-list-item class="px-2">
+        <template #prepend>
+          <span class="text-medium-emphasis text-caption mr-2" style="min-width: 110px">Build</span>
+        </template>
+        <v-chip size="x-small" :color="buildChipColor" variant="tonal" data-testid="call-build">
+          {{ buildLabel }}
+        </v-chip>
+      </v-list-item>
+      <v-list-item class="px-2">
         <template #prepend>
           <span class="text-medium-emphasis text-caption mr-2" style="min-width: 110px"
-            >SV Type</span
+            >Coordinates</span
           >
         </template>
-        <v-chip size="small" color="primary" variant="tonal">{{ variant.sv_type }}</v-chip>
+        <span data-testid="call-coordinates">{{ coordinates }}</span>
+      </v-list-item>
+      <v-list-item class="px-2">
+        <template #prepend>
+          <span class="text-medium-emphasis text-caption mr-2" style="min-width: 110px">Type</span>
+        </template>
+        <v-chip
+          v-if="variant?.sv_type"
+          size="small"
+          :color="
+            variant.sv_type === 'DEL' ? 'error' : variant.sv_type === 'DUP' ? 'info' : 'primary'
+          "
+          variant="tonal"
+        >
+          {{ variant.sv_type }}
+        </v-chip>
+        <span v-else class="text-medium-emphasis">Not reported</span>
       </v-list-item>
       <v-list-item class="px-2">
         <template #prepend>
@@ -133,15 +193,24 @@ function formatText(val: string | null | undefined): string {
             >Length</span
           >
         </template>
-        {{ formatLength(variant?.sv_length) }}
+        <span data-testid="call-length">{{
+          isBreakend ? 'Not applicable (breakend)' : formatLength(variant?.sv_length)
+        }}</span>
       </v-list-item>
-      <v-list-item v-if="variant?.end_pos" class="px-2">
+      <v-list-item class="px-2">
         <template #prepend>
           <span class="text-medium-emphasis text-caption mr-2" style="min-width: 110px"
-            >End Position</span
+            >Caller</span
           >
         </template>
-        {{ formatInt(variant.end_pos) }}
+        <span data-testid="call-caller">{{ callerLabel }}</span>
+      </v-list-item>
+    </v-list>
+
+    <!-- SV Section -->
+    <v-list v-if="isSv" density="compact" bg-color="transparent" class="pa-0">
+      <v-list-item v-if="!hasSvEvidence" class="px-2" data-testid="missing-evidence">
+        <span class="text-medium-emphasis">No read-support evidence reported for this call</span>
       </v-list-item>
       <v-list-item class="px-2">
         <template #prepend>
@@ -202,13 +271,8 @@ function formatText(val: string | null | undefined): string {
 
     <!-- CNV Section -->
     <v-list v-if="isCnv" density="compact" bg-color="transparent" class="pa-0">
-      <v-list-item v-if="variant?.sv_type" class="px-2">
-        <template #prepend>
-          <span class="text-medium-emphasis text-caption mr-2" style="min-width: 110px">Type</span>
-        </template>
-        <v-chip size="small" :color="variant.sv_type === 'DEL' ? 'error' : 'info'" variant="tonal">
-          {{ variant.sv_type }}
-        </v-chip>
+      <v-list-item v-if="!hasCnvEvidence" class="px-2" data-testid="missing-evidence">
+        <span class="text-medium-emphasis">No copy-number evidence reported for this call</span>
       </v-list-item>
       <v-list-item
         v-if="variant?._cnv_copy_number !== null && variant?._cnv_copy_number !== undefined"
@@ -220,22 +284,6 @@ function formatText(val: string | null | undefined): string {
           >
         </template>
         <v-chip size="small" variant="tonal" color="primary">{{ variant._cnv_copy_number }}</v-chip>
-      </v-list-item>
-      <v-list-item class="px-2">
-        <template #prepend>
-          <span class="text-medium-emphasis text-caption mr-2" style="min-width: 110px"
-            >Length</span
-          >
-        </template>
-        {{ formatLength(variant?.sv_length) }}
-      </v-list-item>
-      <v-list-item v-if="variant?.end_pos" class="px-2">
-        <template #prepend>
-          <span class="text-medium-emphasis text-caption mr-2" style="min-width: 110px"
-            >End Position</span
-          >
-        </template>
-        {{ formatInt(variant.end_pos) }}
       </v-list-item>
       <v-list-item
         v-if="variant?._cnv_ho_ref !== null && variant?._cnv_ho_ref !== undefined"

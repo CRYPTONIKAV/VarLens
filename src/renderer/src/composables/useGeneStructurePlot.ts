@@ -6,7 +6,7 @@
  * - Exon rectangles colored by primary theme color
  * - Exon rank numbers centered in/above exons
  * - Strand direction arrow
- * - Variant lollipop at its genomic position
+ * - Variant lollipop at its genomic position, or a start/end band for CNV/SV
  * - X-axis with genomic coordinates
  * - D3 zoom behavior
  * - Tooltip data exposed for Vue overlay rendering
@@ -23,6 +23,16 @@ import type {
 } from '../../../shared/types/protein'
 import { CLINVAR_COLORS, getClinVarCategory } from '../../../shared/utils/protein-utils'
 import type { Dimensions } from './useResizeObserver'
+import { geneAxisLabel } from '../utils/variant-interval'
+import {
+  drawVariantMarker,
+  isInterval,
+  positionVariantMarker,
+  VARIANT_COLOR,
+  type GenomicVariant
+} from './gene-structure-variant-layer'
+
+export type { GenomicVariant }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,21 +49,13 @@ export interface GeneStructureTooltipData {
   clinvarHgvsp?: string | null
 }
 
-/** Variant position on the gene structure */
-export interface GenomicVariant {
-  chr: string
-  pos: number
-  ref: string
-  alt: string
-  label: string
-  color: string
-}
-
 export interface GeneStructurePlotOptions {
   svgRef: Ref<SVGSVGElement | null>
   dimensions: Ref<Dimensions>
   geneStructure: Ref<GeneStructure | null>
   variant: Ref<GenomicVariant | null>
+  /** Appended to the axis label, e.g. a variant genome-build warning */
+  axisNote?: Ref<string | null>
   clinvarVariants?: Ref<ClinVarVariant[]>
   activeClinvarCategories?: Ref<Set<ClinVarSignificance>>
 }
@@ -64,20 +66,18 @@ const MARGIN = { top: 50, right: 40, bottom: 70, left: 60 }
 const INTRON_Y_OFFSET = 0.45
 const EXON_HEIGHT = 28
 const INTRON_LINE_WIDTH = 2
-const LOLLIPOP_STEM_HEIGHT = 60
-const LOLLIPOP_HEAD_RADIUS = 8
 const CLINVAR_DIAMOND_SIZE = 7
 const CLINVAR_TRACK_OFFSET = 24 // Below the exon track
 const EXON_COLOR = '#1867C0' // Vuetify primary blue
 const EXON_COLOR_HOVER = '#1565C0'
 const INTRON_COLOR = '#9E9E9E'
-const VARIANT_COLOR = '#D32F2F' // Red for variant marker
 
 // ─── Composable ───────────────────────────────────────────────────────────────
 
 export function useGeneStructurePlot(options: GeneStructurePlotOptions) {
   const { svgRef, dimensions, geneStructure, variant, clinvarVariants, activeClinvarCategories } =
     options
+  const { axisNote } = options
 
   const tooltip = ref<GeneStructureTooltipData>({
     visible: false,
@@ -170,6 +170,9 @@ export function useGeneStructurePlot(options: GeneStructurePlotOptions) {
 
     // ── Exon rectangles ─────────────────────────────────────────────────
     const exonsGroup = clipGroup.append('g').attr('class', 'exons')
+    const v = variant.value
+    const hitsExon = (e: GeneExon): boolean =>
+      v !== null && isInterval(v) && e.end >= v.pos && e.start <= v.end
 
     for (const exon of gs.exons) {
       const ex = xScale(exon.start)
@@ -186,8 +189,8 @@ export function useGeneStructurePlot(options: GeneStructurePlotOptions) {
         .attr('rx', 3)
         .attr('ry', 3)
         .attr('fill', EXON_COLOR)
-        .attr('stroke', '#fff')
-        .attr('stroke-width', 1)
+        .attr('stroke', hitsExon(exon) ? VARIANT_COLOR : '#fff')
+        .attr('stroke-width', hitsExon(exon) ? 2.5 : 1)
         .attr('cursor', 'pointer')
         .on('mouseenter', (event: MouseEvent) => {
           d3.select(event.currentTarget as SVGRectElement).attr('fill', EXON_COLOR_HOVER)
@@ -223,70 +226,20 @@ export function useGeneStructurePlot(options: GeneStructurePlotOptions) {
         .text(labelText)
     }
 
-    // ── User variant lollipop ───────────────────────────────────────────
-    const v = variant.value
+    // ── User variant: lollipop (point) or interval band (CNV/SV) ───────
     if (v !== null) {
-      const vx = xScale(v.pos)
-      const stemTop = backboneY - EXON_HEIGHT / 2 - LOLLIPOP_STEM_HEIGHT
-      const variantGroup = clipGroup.append('g').attr('class', 'variant-marker')
-
-      // Stem
-      variantGroup
-        .append('line')
-        .attr('x1', vx)
-        .attr('y1', backboneY - EXON_HEIGHT / 2)
-        .attr('x2', vx)
-        .attr('y2', stemTop)
-        .attr('stroke', VARIANT_COLOR)
-        .attr('stroke-width', 2.5)
-
-      // Glow ring
-      variantGroup
-        .append('circle')
-        .attr('cx', vx)
-        .attr('cy', stemTop)
-        .attr('r', LOLLIPOP_HEAD_RADIUS + 3)
-        .attr('fill', 'none')
-        .attr('stroke', '#FFD700')
-        .attr('stroke-width', 2)
-        .attr('opacity', 0.4)
-
-      // Head
-      variantGroup
-        .append('circle')
-        .attr('cx', vx)
-        .attr('cy', stemTop)
-        .attr('r', LOLLIPOP_HEAD_RADIUS)
-        .attr('fill', VARIANT_COLOR)
-        .attr('stroke', '#FFD700')
-        .attr('stroke-width', 2.5)
-        .attr('cursor', 'pointer')
-        .on('mouseenter', (event: MouseEvent) => {
-          tooltip.value = {
-            visible: true,
-            x: event.clientX,
-            y: event.clientY,
-            type: 'variant',
-            variantLabel: v.label
-          }
-        })
-        .on('mousemove', (event: MouseEvent) => {
-          tooltip.value = { ...tooltip.value, x: event.clientX, y: event.clientY }
-        })
-        .on('mouseleave', () => {
-          tooltip.value = { ...tooltip.value, visible: false }
-        })
-
-      // Label above head
-      variantGroup
-        .append('text')
-        .attr('x', vx)
-        .attr('y', stemTop - LOLLIPOP_HEAD_RADIUS - 8)
-        .attr('text-anchor', 'middle')
-        .attr('fill', '#333')
-        .attr('font-size', '12px')
-        .attr('font-weight', '700')
-        .text(v.label)
+      drawVariantMarker(clipGroup, xScale, backboneY, EXON_HEIGHT, v, (event) => {
+        tooltip.value =
+          event === null
+            ? { ...tooltip.value, visible: false }
+            : {
+                visible: true,
+                x: event.clientX,
+                y: event.clientY,
+                type: 'variant',
+                variantLabel: v.label
+              }
+      })
     }
 
     // ── ClinVar variant diamonds (below exon track) ────────────────────
@@ -370,7 +323,7 @@ export function useGeneStructurePlot(options: GeneStructurePlotOptions) {
       .attr('text-anchor', 'middle')
       .attr('fill', '#666')
       .attr('font-size', '12px')
-      .text(`Chromosome ${gs.chromosome} (GRCh38)`)
+      .text(geneAxisLabel(gs.chromosome, axisNote?.value))
 
     // ── Title ───────────────────────────────────────────────────────────
     mainGroup
@@ -506,12 +459,7 @@ export function useGeneStructurePlot(options: GeneStructurePlotOptions) {
 
     // Update variant marker
     const v = variant.value
-    if (v !== null) {
-      const vx = newXScale(v.pos)
-      clipGroup.selectAll('.variant-marker line').attr('x1', vx).attr('x2', vx)
-      clipGroup.selectAll('.variant-marker circle').attr('cx', vx)
-      clipGroup.selectAll('.variant-marker text').attr('x', vx)
-    }
+    if (v !== null) positionVariantMarker(clipGroup, newXScale, v)
 
     // Update ClinVar markers
     const cvVars = clinvarVariants?.value ?? []
@@ -561,6 +509,7 @@ export function useGeneStructurePlot(options: GeneStructurePlotOptions) {
       dimensions.value,
       geneStructure.value,
       variant.value,
+      axisNote?.value,
       clinvarVariants?.value,
       activeClinvarCategories?.value
     ]

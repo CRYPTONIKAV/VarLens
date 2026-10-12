@@ -41,6 +41,7 @@ export const queryKeys = {
   tags: () => [...root(), 'tags'] as const,
   filterPresets: () => [...root(), 'filter-presets'] as const,
   caseIds: () => [...root(), 'case-ids'] as const,
+  caseBuilds: () => [...root(), 'case-builds'] as const,
   transcripts: (variantId: number) => [...root(), 'variant', variantId, 'transcripts'] as const,
   protein: (kind: 'mapping' | 'gene-structure' | 'domains' | 'structure', id: string) =>
     [...root(), 'protein', kind, id] as const,
