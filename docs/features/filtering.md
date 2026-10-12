@@ -125,6 +125,24 @@ column:operator:value
 | `<` `>` `<=` `>=` | Comparisons | Numeric |
 | `~` | Contains | Text, Categorical |
 
+### Custom VCF INFO Fields
+
+INFO fields without a dedicated column are kept with each variant and can be filtered in the single-case view as `info.<KEY>` (the key is case-sensitive, as in the VCF header):
+
+```
+info.DP:>=:20
+info.CALLER:=:deepvariant
+info.SOMATIC:is:notnull
+```
+
+- `<` `>` `<=` `>=` compare numbers only; rows whose value is text, a list, a flag or missing never match.
+- `=` matches the exact stored text, or a numerically equal value (`info.DP:=:0` matches `0` and `0.0`).
+- `is:null` matches variants where the key is absent or holds the VCF missing value `.`; `info.DP:=:"."` matches only the explicit `.`.
+- A flag counts as present (`is:notnull`).
+- List values (`Number` other than 1, e.g. `1,2`) cannot be filtered yet.
+- INFO filters are not available in the cohort view.
+- Always write the operator explicitly (`info.DP:=:20`, not `info.DP:20`).
+
 ### Combining Filters
 
 Use `AND` or `OR` between expressions:

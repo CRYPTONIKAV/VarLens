@@ -67,7 +67,11 @@ const COLUMN_LABELS: Record<string, string> = {
  * - categorical (in): "Consequence: 3 selected"
  * - text (like): "Gene ~ BRCA"
  */
-function formatColumnFilterValue(operator: string, value: string | number | string[]): string {
+function formatColumnFilterValue(
+  operator: string,
+  value: string | number | string[],
+  includeEmpty?: boolean
+): string {
   if (operator === 'in' && Array.isArray(value)) {
     return `${value.length} selected`
   }
@@ -76,8 +80,8 @@ function formatColumnFilterValue(operator: string, value: string | number | stri
   }
   if (operator === 'is_null') return 'is empty'
   if (operator === 'not_null') return 'has a value'
-  // Numeric operators: =, !=, <, >, <=, >=
-  return `${operator} ${value}`
+  // Numeric operators: =, !=, <, >, <=, >= — say when missing values also pass
+  return includeEmpty === true ? `${operator} ${value} or missing` : `${operator} ${value}`
 }
 
 /**
@@ -184,14 +188,18 @@ export function buildActiveFiltersList(
 }
 
 /**
- * Build active filter chips for column filters only.
+ * Build active filter chips for column filters only. `idPrefix` keeps chips
+ * of different sources apart (`col:` table column filters, `dsl:` search bar).
  */
-export function buildColumnFilterChips(columnFilters: ColumnFiltersParam = {}): ActiveFilter[] {
+export function buildColumnFilterChips(
+  columnFilters: ColumnFiltersParam = {},
+  idPrefix = 'col'
+): ActiveFilter[] {
   const list: ActiveFilter[] = []
   for (const [key, filter] of Object.entries(columnFilters)) {
     const label = COLUMN_LABELS[key] ?? key
-    const displayValue = formatColumnFilterValue(filter.operator, filter.value)
-    list.push({ id: `col:${key}`, label, value: displayValue })
+    const displayValue = formatColumnFilterValue(filter.operator, filter.value, filter.includeEmpty)
+    list.push({ id: `${idPrefix}:${key}`, label, value: displayValue })
   }
   return list
 }

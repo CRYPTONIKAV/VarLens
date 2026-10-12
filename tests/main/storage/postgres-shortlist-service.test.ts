@@ -54,42 +54,43 @@ function variant(overrides: Partial<Variant>): Variant {
   }
 }
 
+/** A `streamVariantRows` stand-in yielding the given rows. */
+function streamOf(rows: Variant[]): {
+  streamVariantRows: ReturnType<typeof vi.fn>
+} {
+  return {
+    streamVariantRows: vi.fn(async function* () {
+      yield* rows as unknown as Array<Record<string, unknown>>
+    })
+  }
+}
+
 describe('PostgresShortlistService', () => {
   it('queries PostgreSQL variants with exact per-type scope and returns ranked rows', async () => {
     const pool = {
       query: vi.fn().mockResolvedValue({ rows: [{ variant_id: 2, starred: 1 }] })
     }
-    const variants = {
-      queryVariants: vi.fn().mockResolvedValue({
-        data: [
-          variant({ id: 1, cadd: 10, clinvar: null }),
-          variant({ id: 2, cadd: 40, clinvar: 'Pathogenic' })
-        ],
-        total_count: 0
-      })
-    }
+    const rows = streamOf([
+      variant({ id: 1, cadd: 10, clinvar: null }),
+      variant({ id: 2, cadd: 40, clinvar: 'Pathogenic' })
+    ])
     const service = new PostgresShortlistService({
       pool: pool as never,
       schema: 'public',
       filterPresets: { getPreset: vi.fn() },
-      variants: variants as never
+      rows
     })
 
     const result = await service.getShortlist({ caseId: 1, adHocConfig: CONFIG })
 
-    expect(variants.queryVariants).toHaveBeenCalledWith(
+    expect(rows.streamVariantRows).toHaveBeenCalledWith(
       expect.objectContaining({
         case_id: 1,
         variant_type: 'snv',
         exact_variant_type: true,
         consequences: ['HIGH'],
         gnomad_af_max: 0.01
-      }),
-      20,
-      0,
-      [{ key: 'id', order: 'asc' }],
-      true,
-      false
+      })
     )
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('case_variant_annotations'), [
       1,
@@ -105,13 +106,51 @@ describe('PostgresShortlistService', () => {
     })
   })
 
+  it('never ClinVar-pins a disease-locus STR without a ClinVar annotation (#531)', async () => {
+    const strRow = variant({
+      id: 7,
+      variant_type: 'str',
+      consequence: null,
+      clinvar: null,
+      _str_status: 'pathologic',
+      _str_disease: 'Huntington disease'
+    } as Partial<Variant>)
+    const service = new PostgresShortlistService({
+      pool: { query: vi.fn().mockResolvedValue({ rows: [] }) } as never,
+      schema: 'public',
+      filterPresets: { getPreset: vi.fn() },
+      rows: streamOf([strRow])
+    })
+
+    const result = await service.getShortlist({
+      caseId: 1,
+      adHocConfig: {
+        ...CONFIG,
+        variantTypeScope: ['str'],
+        rankConfig: { ...CONFIG.rankConfig, clinvarPinTop: true }
+      }
+    })
+
+    expect(result.rows[0]).toMatchObject({
+      id: 7,
+      str_disease: 'Huntington disease',
+      rank_clinvar_pinned: false
+    })
+    expect(result.rows[0].rank_components.clinvar).toBe(0)
+  })
+
   it('rethrows a refused panel filter as-is and aggregates other failures', async () => {
     const make = (error: Error): PostgresShortlistService =>
       new PostgresShortlistService({
         pool: { query: vi.fn() } as never,
         schema: 'public',
         filterPresets: { getPreset: vi.fn() },
-        variants: { queryVariants: vi.fn().mockRejectedValue(error) } as never
+        rows: {
+          streamVariantRows: vi.fn(async function* () {
+            yield* []
+            throw error
+          })
+        }
       })
 
     const refused = new PanelRegionsUnavailableError(3, 'GRCh37')

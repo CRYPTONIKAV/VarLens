@@ -203,4 +203,63 @@ describe('parseDsl', () => {
     expect(result.errors).toEqual([])
     expect(result.ast?.type).toBe('group')
   })
+
+  describe('validation (#527)', () => {
+    it.each([
+      ['gene:=:BRCA1 AND', "after 'AND'"],
+      ['gene:=:BRCA1 OR', "after 'OR'"],
+      ['gene:=:BRCA1)', "Unexpected ')'"],
+      ['(gene:=:BRCA1', 'Expected rparen'],
+      ['gene:=:BRCA1 cadd:>=:20', 'Unexpected'],
+      ['gene:=:"BRCA1', 'Unclosed quote'],
+      ['gene:=:BRCA1 ! cadd:>=:20', "Unexpected character '!'"],
+      ['foo:=:bar', "Unknown field 'foo'"],
+      ['foo:is:null', "Unknown field 'foo'"],
+      ['cadd:<:abc', "'abc' is not a number"],
+      ['cadd:=:""', "'' is not a number"],
+      ['cadd:=:" "', "' ' is not a number"],
+      ['gene:~:""', 'needs a non-empty value'],
+      ['clinvar:!~:benign', "Operator '!~' is not supported"],
+      ['gene:^:BR', "Operator '^' is not supported"],
+      ['gene:$:A1', "Operator '$' is not supported"],
+      ['cadd:~:20', "Operator '~' is not supported"],
+      ['cnv.copy_number:~:2', "Operator '~' is not supported"]
+    ])('rejects %s', (input, message) => {
+      const result = parseDsl(input)
+      expect(result.errors.map((e) => e.message).join(' ')).toContain(message)
+    })
+
+    it.each([
+      ['cadd:=:0', { type: 'rule', column: 'cadd', operator: '=', value: 0 }],
+      ['cadd:0', { type: 'rule', column: 'cadd', operator: '=', value: 0 }],
+      [
+        'gnomad_af:is:notnull',
+        { type: 'rule', column: 'gnomad_af', operator: 'is:notnull', value: null }
+      ],
+      ['cnv.copy_number:<:2', { type: 'rule', column: 'cnv.copy_number', operator: '<', value: 2 }],
+      ['clinvar:=:"a \\"b\\""', { type: 'rule', column: 'clinvar', operator: '=', value: 'a "b"' }],
+      ['gene:=:""', { type: 'rule', column: 'gene_symbol', operator: '=', value: '' }]
+    ])('accepts %s', (input, ast) => {
+      const result = parseDsl(input)
+      expect(result.errors).toEqual([])
+      expect(result.ast).toEqual(ast)
+    })
+  })
+
+  describe('view scope', () => {
+    it('rejects per-case fields in the cohort view', () => {
+      for (const input of ['gt_num:=:1/1', 'hpo:>:0.3', 'qual:>=:30', 'moi:=:AD']) {
+        const result = parseDsl(input, 'cohort')
+        expect(result.ast).toBeNull()
+        expect(result.errors[0].message).toContain('per-case field')
+      }
+    })
+
+    it('rejects cohort-only fields in a single case and accepts them in the cohort view', () => {
+      expect(parseDsl('carrier_count:>=:2').errors[0].message).toContain('cohort field')
+      expect(parseDsl('carrier_count:>=:2', 'cohort').errors).toEqual([])
+      expect(parseDsl('gt_num:=:1/1').errors).toEqual([])
+      expect(parseDsl('cadd:>=:20', 'cohort').errors).toEqual([])
+    })
+  })
 })

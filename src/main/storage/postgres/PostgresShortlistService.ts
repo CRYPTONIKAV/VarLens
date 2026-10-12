@@ -6,7 +6,11 @@ import {
   throwShortlistQueryErrors,
   type GetShortlistParams
 } from '../../database/ShortlistService'
-import { toShortlistCandidate, toShortlistVariantFilter } from '../../database/shortlist-query'
+import {
+  SHORTLIST_PAGE_SIZE,
+  toShortlistCandidate,
+  toShortlistVariantFilter
+} from '../../database/shortlist-query'
 import { ShortlistConfigSchema } from '../../../shared/types/ipc-schemas'
 import type { FilterPreset } from '../../../shared/types/filter-presets'
 import type { Variant } from '../../../shared/types/database'
@@ -19,16 +23,17 @@ import type {
   ShortlistRow,
   VariantTypeKey
 } from '../../../shared/types/shortlist'
-import { compareScoredRows, scoreRow } from '../../services/scoring'
+import { mergeTopScored, scoreRow } from '../../services/scoring'
 import type { PostgresFilterPresetsRepository } from './PostgresFilterPresetsRepository'
-import type { PostgresVariantReadRepository } from './PostgresVariantReadRepository'
+import type { PostgresExportRepository } from './PostgresExportRepository'
+import { normalizeVariantRow } from './PostgresVariantReadRepository'
 import { quoteIdentifier } from './identifiers'
 
 interface PostgresShortlistServiceOptions {
   pool: Pick<Pool, 'query'>
   schema: string
   filterPresets: Pick<PostgresFilterPresetsRepository, 'getPreset'>
-  variants: Pick<PostgresVariantReadRepository, 'queryVariants'>
+  rows: Pick<PostgresExportRepository, 'streamVariantRows'>
 }
 
 function toError(value: unknown): Error {
@@ -58,9 +63,9 @@ export class PostgresShortlistService {
         : resolvedConfig
 
     const scope = config.variantTypeScope ?? (await this.detectPresentTypes(params.caseId))
-    const rowsById = new Map<number, Variant>()
+    let topN: ScoredCandidate[] = []
+    let totalCandidates = 0
     const queryErrors: Array<{ type: VariantTypeKey; error: Error }> = []
-    const perTypeLimit = Math.max(1, config.topN * 4)
 
     for (const type of scope) {
       try {
@@ -68,17 +73,23 @@ export class PostgresShortlistService {
           ...config.baseFilters,
           ...(config.perTypeOverrides?.[type] ?? {})
         }
-        const result = await this.options.variants.queryVariants(
-          toShortlistVariantFilter(params.caseId, type, mergedFilters),
-          perTypeLimit,
-          0,
-          [{ key: 'id', order: 'asc' }],
-          true,
-          false
-        )
-        for (const row of result.data) {
-          rowsById.set(row.id, row)
+        const filter = toShortlistVariantFilter(params.caseId, type, mergedFilters)
+        // One streamed scan over every eligible row (id ASC), scored in pages
+        // so only the best topN are kept (#537).
+        let page: Variant[] = []
+        const flush = async (): Promise<void> => {
+          if (page.length === 0) return
+          totalCandidates += page.length
+          const candidates = await this.hydrateCandidates(params.caseId, page)
+          const scored = candidates.map((row) => ({ ...row, ...scoreRow(row, config.rankConfig) }))
+          topN = mergeTopScored(topN, scored, config.topN, config.tieBreakers)
+          page = []
         }
+        for await (const row of this.options.rows.streamVariantRows(filter)) {
+          page.push(normalizeVariantRow(row))
+          if (page.length === SHORTLIST_PAGE_SIZE) await flush()
+        }
+        await flush()
       } catch (error) {
         queryErrors.push({ type, error: toError(error) })
       }
@@ -86,20 +97,12 @@ export class PostgresShortlistService {
 
     if (queryErrors.length > 0) throwShortlistQueryErrors(queryErrors, 'postgres shortlist')
 
-    const candidates = await this.hydrateCandidates(params.caseId, [...rowsById.values()])
-    const scored: ScoredCandidate[] = candidates.map((row) => ({
-      ...row,
-      ...scoreRow(row, config.rankConfig)
-    }))
-
-    scored.sort((a, b) => compareScoredRows(a, b, config.tieBreakers))
-    const topN = scored.slice(0, config.topN)
     const rows: ShortlistRow[] = topN.map((row, index) => ({ ...row, rank: index + 1 }))
 
     const elapsedMs = Date.now() - started
     return {
       rows,
-      totalCandidates: candidates.length,
+      totalCandidates,
       presetUsed,
       elapsedMs
     }

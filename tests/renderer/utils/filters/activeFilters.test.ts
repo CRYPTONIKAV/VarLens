@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildActiveFiltersList,
+  buildColumnFilterChips,
   formatAfPercent
 } from '../../../../src/renderer/src/utils/filters/activeFilters'
 import type { FilterState } from '../../../../src/shared/types/filters'
@@ -277,5 +278,24 @@ describe('buildActiveFiltersList', () => {
       const result = buildActiveFiltersList(makeDefaultFilters(), [], {})
       expect(result).toEqual([])
     })
+  })
+})
+
+describe('buildColumnFilterChips', () => {
+  it('prefixes ids by source and says when missing values pass', () => {
+    expect(
+      buildColumnFilterChips(
+        {
+          cadd: { operator: '>=', value: 20, includeEmpty: true },
+          gene_symbol: { operator: 'in', value: ['BRCA1', 'TP53'] },
+          gnomad_af: { operator: 'is_null', value: '' }
+        },
+        'dsl'
+      )
+    ).toEqual([
+      { id: 'dsl:cadd', label: 'CADD', value: '>= 20 or missing' },
+      { id: 'dsl:gene_symbol', label: 'Gene', value: '2 selected' },
+      { id: 'dsl:gnomad_af', label: 'gnomAD AF', value: 'is empty' }
+    ])
   })
 })

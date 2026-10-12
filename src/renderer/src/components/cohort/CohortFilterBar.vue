@@ -20,13 +20,15 @@
     <template #filters>
       <!-- DSL search bar (same component as variant table) -->
       <DslSearchBar
+        ref="searchFieldRef"
         :raw-input="dslInput"
         :suggestions="dslSuggestions"
         :is-dsl-mode="isDslMode"
         :errors="dslErrors"
+        :not-applied="isDraftPending"
         class="filter-search-input mr-2"
         @update:raw-input="dslInput = $event"
-        @apply="applyDslFilters"
+        @apply="applyDslFilters()"
         @clear="handleDslClear"
         @select-suggestion="applySuggestion"
       />
@@ -145,6 +147,7 @@ import type { CohortVariant } from '../../../../shared/types/cohort'
 import type { ColumnFiltersParam } from '../../../../shared/types/column-filters'
 import type { CohortFilterDrawerState } from './cohortFilterDrawerTypes'
 import FilterTypeNarrowingChip from '../filters/FilterTypeNarrowingChip.vue'
+import { buildColumnFilterChips } from '../../utils/filters/activeFilters'
 import { mdiCommentText, mdiCommentTextOutline, mdiStar, mdiStarOutline } from '@mdi/js'
 import {
   ACMG_FILTER_OPTIONS,
@@ -351,7 +354,8 @@ const caddPresets = [
 // Merged active filters: regular filters + column filters
 const mergedActiveFilters = computed<ActiveFilter[]>(() => [
   ...activeFiltersList.value,
-  ...(props.columnActiveFilters ?? [])
+  ...(props.columnActiveFilters ?? []),
+  ...buildColumnFilterChips(dslColumnFilters.value, 'dsl')
 ])
 
 // Merged has-active check (includes column filters + DSL filters)
@@ -360,10 +364,8 @@ const mergedHasActiveFilters = computed(
     hasActiveFilters.value || (props.columnActiveFilters ?? []).length > 0 || hasDslFilters.value
 )
 
-// Filter count reflects actual filters + DSL column filters, not sort
-const activeFilterCount = computed(
-  () => mergedActiveFilters.value.length + Object.keys(dslColumnFilters.value).length
-)
+// Filter count reflects actual filters (DSL chips included), not sort
+const activeFilterCount = computed(() => mergedActiveFilters.value.length)
 
 // Gene autocomplete state
 const geneSymbolSuggestions = ref<string[]>([])
@@ -467,19 +469,25 @@ const {
   dslSuggestions,
   isDslMode,
   dslErrors,
+  isDraftPending,
   dslColumnFilters,
   hasDslFilters,
   applyDslFilters,
   handleDslClear,
+  removeDslCondition,
   applySuggestion
 } = useDslFilterIntegration({
   urlRoute: 'cohort',
-  presetNames: () => allPresets.value.map((p) => p.name.toLowerCase().replace(/\s+/g, '_')),
+  scope: 'cohort',
+  presets: () => allPresets.value,
   searchQueryRef: searchTerm,
   emitFilters: emitFilterChange,
   clearConflictingDrawerFields: (columnFilters) => {
     if ('gnomad_af' in columnFilters) filters.value.maxGnomadAf = null
     if ('cadd' in columnFilters) filters.value.minCadd = null
+  },
+  activatePreset: (id) => {
+    if (!isPresetActive(id)) void handlePresetToggle(id)
   }
 })
 
@@ -544,7 +552,8 @@ provide<CohortFilterDrawerState>('cohortFilterDrawerState', {
   dslSuggestions,
   isDslMode,
   dslErrors,
-  onDslApply: applyDslFilters,
+  isDraftPending,
+  onDslApply: () => applyDslFilters(),
   onDslClear: handleDslClear,
   onDslSuggestionSelect: applySuggestion,
   dslColumnFilters,
@@ -569,7 +578,9 @@ const handleClearAll = () => {
 }
 
 const handleClearFilter = (filterId: string) => {
-  if (filterId.startsWith('col:')) {
+  if (filterId.startsWith('dsl:')) {
+    removeDslCondition(filterId.slice(4))
+  } else if (filterId.startsWith('col:')) {
     const columnKey = filterId.slice(4)
     emit('clear-column-filter', columnKey)
   } else {
@@ -607,8 +618,17 @@ onMounted(async () => {
   await loadPresets()
 })
 
-// Expose DSL column filters for CohortTable to merge into query
-defineExpose({ dslColumnFilters })
+const searchFieldRef = ref<InstanceType<typeof DslSearchBar> | null>(null)
+
+// dslColumnFilters: merged into CohortTable's query. The rest are the same
+// shortcut commands FilterToolbar exposes (App dispatches to the visible view).
+defineExpose({
+  dslColumnFilters,
+  focusSearch: () => searchFieldRef.value?.focus(),
+  toggleFilterDrawer: () => (filterDrawerOpen.value = !filterDrawerOpen.value),
+  toggleColumnsDrawer: () => (columnsDrawerOpen.value = !columnsDrawerOpen.value),
+  handleClearAll
+})
 </script>
 
 <style scoped>

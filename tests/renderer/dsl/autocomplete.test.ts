@@ -56,8 +56,38 @@ describe('getAutocompleteSuggestions', () => {
     expect(suggestions.some((s) => s.value === '=')).toBe(true)
   })
 
-  it('limits suggestions to 10', () => {
-    const suggestions = getAutocompleteSuggestions('')
-    expect(suggestions.length).toBeLessThanOrEqual(10)
+  it('lists every in-scope field on an empty bar so a query can be built by picking', () => {
+    const fields = (scope: 'case' | 'cohort'): string[] =>
+      getAutocompleteSuggestions('', [], scope)
+        .filter((s) => s.category === 'column')
+        .map((s) => s.value)
+    expect(fields('case')).toEqual(
+      expect.arrayContaining(['gnomad_af', 'omim_mim_number', 'gt_num'])
+    )
+    expect(fields('case')).not.toContain('carrier_count')
+    expect(fields('cohort')).toEqual(
+      expect.arrayContaining(['gnomad_af', 'carrier_count', 'hom_count'])
+    )
+    expect(fields('cohort')).not.toEqual(expect.arrayContaining(['qual']))
+    expect(
+      fields('cohort').some((f) => ['qual', 'gt_num', 'hpo_sim_score', 'moi'].includes(f))
+    ).toBe(false)
+  })
+
+  it('offers no operators for a case-only field in the cohort view', () => {
+    expect(getAutocompleteSuggestions('gt_num:', [], 'cohort')).toEqual([])
+    expect(getAutocompleteSuggestions('carrier_count:', [], 'cohort').length).toBeGreaterThan(0)
+  })
+
+  it('explains missing-value behaviour on operators', () => {
+    const ops = getAutocompleteSuggestions('cadd:')
+    expect(ops.find((s) => s.value === '>=')?.description).toContain('also keeps variants with no')
+    expect(ops.find((s) => s.value === '!=')?.description).toContain('never match')
+  })
+
+  it('hints how to enter a value when there are no common values', () => {
+    const [hint] = getAutocompleteSuggestions('gene_symbol:=:')
+    expect(hint.category).toBe('hint')
+    expect(hint.label).toContain('press Enter')
   })
 })

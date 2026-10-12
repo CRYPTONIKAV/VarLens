@@ -95,6 +95,7 @@ export function useVariantData(options: UseVariantDataOptions) {
     items: variants,
     totalCount,
     loading,
+    error: loadError,
     loadPage: loadVariants,
     invalidateAndReload,
     resetSort,
@@ -260,6 +261,8 @@ export function useVariantData(options: UseVariantDataOptions) {
     variants,
     totalCount,
     loading,
+    /** Last query failure; rows/count from the previous success stay visible (#530). */
+    loadError,
     page,
     itemsPerPage,
     sortBy,

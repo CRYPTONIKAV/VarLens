@@ -9,19 +9,19 @@
  *     For each variant type in scope, merges `baseFilters` with any
  *     `perTypeOverrides[type]`, maps the result to the case-view
  *     `VariantFilter`, resolves an active gene panel, and runs
- *     `queryVariantsByType()` (the case-view filter pipeline) under a
- *     `topN * 4` safety cap. Per-type errors are collected and, if any
+ *     the case-view filter pipeline over every eligible row in keyset
+ *     pages (`forEachCandidatePage`). Per-type errors are collected and, if any
  *     type failed, the whole shortlist aborts with `ShortlistQueryError`
  *     — never a silent scope reduction (spec §7 boundary 1).
  *
- *   Stage 2 — pure-TypeScript scoring
+ *   Stage 2 — pure-TypeScript scoring (per page, see `mergeTopScored`)
  *     Each Stage-1 candidate is passed to `scoreRow()` which dispatches
  *     to the per-type scorer and produces the `rank_score` +
  *     `rank_components` + pin flags. Malformed rows are handled inside
  *     `scoreRow` itself (Wave 1.A) — it falls back to `ZERO_COMPONENTS`
  *     and logs via `mainLogger` so a single bad row never poisons the
- *     whole result (spec §7 boundary 2). The scored rows are sorted via
- *     `compareScoredRows()` which enforces partition ordering:
+ *     whole result (spec §7 boundary 2). Each page is merged into the
+ *     running top-N via `compareScoredRows()` which enforces partition ordering:
  *     starred-pinned > clinvar-pinned > rank_score DESC > tie-breakers
  *     > id ASC.
  *
@@ -43,7 +43,8 @@ import { mainLogger } from '../services/MainLogger'
 import { DatabaseError, NotFoundError } from './errors'
 import type { FilterPresetRepository } from './FilterPresetRepository'
 import {
-  queryVariantsByType,
+  forEachCandidatePage,
+  SHORTLIST_PAGE_SIZE,
   toShortlistVariantFilter,
   type ShortlistQuerySource
 } from './shortlist-query'
@@ -56,11 +57,10 @@ import {
 } from './panel-interval-resolution'
 import type { VariantFilterBuilder } from './VariantFilterBuilder'
 import type { VariantFilter } from '../../shared/types/database'
-import { scoreRow, compareScoredRows } from '../services/scoring'
+import { mergeTopScored, scoreRow } from '../services/scoring'
 import { ShortlistConfigSchema } from '../../shared/types/ipc-schemas'
 import type {
   ShortlistConfig,
-  ShortlistCandidate,
   ScoredCandidate,
   ShortlistRow,
   ShortlistResult,
@@ -138,7 +138,7 @@ function toError(value: unknown): Error {
 /**
  * Convert a dotted extension sort key (`sv.vaf`, `cnv.copy_number`,
  * `str.disease`, `str.str_status`) into the flat column alias that
- * `queryVariantsByType` projects onto `ShortlistCandidate` rows
+ * `forEachCandidatePage` projects onto `ShortlistCandidate` rows
  * (`sv_vaf`, `cnv_copy_number`, `str_disease`, `str_status`).
  *
  * Called on the resolved tieBreakers regardless of whether they came
@@ -219,10 +219,12 @@ export class ShortlistService {
 
     const scope = config.variantTypeScope ?? this.detectPresentTypes(params.caseId)
 
-    // ── Stage 1: candidate generation ────────────────────────────
-    const candidates: ShortlistCandidate[] = []
+    // ── Stage 1 + 2: page every eligible candidate, keep the best topN ──
+    // `scoreRow` catches per-row scorer failures (ZERO_COMPONENTS), so a
+    // malformed row sorts to the bottom instead of crashing the pass.
+    let topN: ScoredCandidate[] = []
+    let totalCandidates = 0
     const queryErrors: Array<{ type: VariantTypeKey; error: Error }> = []
-    const perTypeLimit = Math.max(1, config.topN * 4)
 
     for (const type of scope) {
       try {
@@ -232,27 +234,17 @@ export class ShortlistService {
         }
         const filter = toShortlistVariantFilter(params.caseId, type, mergedFilters)
         this.resolvePanel(filter, getGeneReference)
-        candidates.push(...queryVariantsByType(this.stage1Source, filter, perTypeLimit))
+        forEachCandidatePage(this.stage1Source, filter, SHORTLIST_PAGE_SIZE, (page) => {
+          totalCandidates += page.length
+          const scored = page.map((row) => ({ ...row, ...scoreRow(row, config.rankConfig) }))
+          topN = mergeTopScored(topN, scored, config.topN, config.tieBreakers)
+        })
       } catch (e) {
         queryErrors.push({ type, error: toError(e) })
       }
     }
 
     if (queryErrors.length > 0) throwShortlistQueryErrors(queryErrors, 'shortlist')
-
-    const totalCandidates = candidates.length
-
-    // ── Stage 2: pure-TypeScript scoring ─────────────────────────
-    // `scoreRow` (Wave 1.A) already catches per-row scorer failures and
-    // falls back to `ZERO_COMPONENTS`, so a single malformed row will
-    // simply sort to the bottom instead of crashing the whole pass.
-    const scored: ScoredCandidate[] = candidates.map((row) => ({
-      ...row,
-      ...scoreRow(row, config.rankConfig)
-    }))
-
-    scored.sort((a, b) => compareScoredRows(a, b, config.tieBreakers))
-    const topN = scored.slice(0, config.topN)
 
     // ── Stage 3: 1-based rank assignment ─────────────────────────
     const rows: ShortlistRow[] = topN.map((row, i) => ({ ...row, rank: i + 1 }))
@@ -312,7 +304,7 @@ export class ShortlistService {
     // Validate the stored payload through the same schema that guards
     // the IPC boundary. Presets are loaded from disk, so a hand-edited
     // DB or an older-schema preset could carry a malformed config that
-    // would otherwise produce `NaN * 4` limits, undefined weights, or
+    // would otherwise produce NaN limits, undefined weights, or
     // other silent failures inside the Stage-1/2 pipeline. A parse
     // failure surfaces as a DatabaseError with the structured Zod
     // issues in the message so the renderer can show a meaningful

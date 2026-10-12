@@ -8,11 +8,15 @@
 import { ref, computed, watch } from 'vue'
 import { parseDsl } from '../dsl/parser'
 import { translateAst, type TranslationResult } from '../dsl/translator'
-import { getAutocompleteSuggestions, type Suggestion } from '../dsl/autocomplete'
-import type { DslParseResult } from '../dsl/types'
+import {
+  getAutocompleteSuggestions,
+  type Suggestion,
+  type SuggestionScope
+} from '../dsl/autocomplete'
+import type { DslParseError, DslParseResult } from '../dsl/types'
 import { useDebounceFn } from '@vueuse/core'
 
-export function useDslSearch(presetNames: () => string[]) {
+export function useDslSearch(presetNames: () => string[], scope: SuggestionScope = 'case') {
   /** Raw input text in the search bar */
   const rawInput = ref('')
 
@@ -28,14 +32,24 @@ export function useDslSearch(presetNames: () => string[]) {
   const translationResult = ref<TranslationResult>({
     columnFilters: {},
     presetNames: [],
-    warnings: []
+    errors: []
   })
 
   /** Autocomplete suggestions for the dropdown */
   const suggestions = ref<Suggestion[]>([])
 
-  /** Whether the input is valid DSL (no parse errors) */
-  const isValid = computed(() => parseResult.value.errors.length === 0)
+  /** Parse errors plus expressions the filter map cannot represent (rejected as a whole) */
+  const errors = computed<DslParseError[]>(() => [
+    ...parseResult.value.errors,
+    ...translationResult.value.errors.map((message) => ({
+      message,
+      position: 0,
+      length: rawInput.value.length
+    }))
+  ])
+
+  /** Whether the input is valid DSL (nothing to reject) */
+  const isValid = computed(() => errors.value.length === 0)
 
   /** Whether the input is in DSL mode (contains DSL syntax) */
   const isDslMode = computed(() => parseResult.value.isDsl)
@@ -43,24 +57,21 @@ export function useDslSearch(presetNames: () => string[]) {
   /** FTS query (only populated when not in DSL mode) */
   const ftsQuery = computed(() => parseResult.value.ftsQuery)
 
-  /** Parse errors for inline display */
-  const errors = computed(() => parseResult.value.errors)
-
   /** Update parse result and suggestions */
   function updateParse(): void {
     const input = rawInput.value.trim()
-    parseResult.value = parseDsl(input)
+    parseResult.value = parseDsl(input, scope)
 
     if (parseResult.value.ast && parseResult.value.errors.length === 0) {
       translationResult.value = translateAst(parseResult.value.ast)
     } else {
-      translationResult.value = { columnFilters: {}, presetNames: [], warnings: [] }
+      translationResult.value = { columnFilters: {}, presetNames: [], errors: [] }
     }
   }
 
   /** Update autocomplete suggestions (called on every keystroke) */
   function updateSuggestions(): void {
-    suggestions.value = getAutocompleteSuggestions(rawInput.value, presetNames())
+    suggestions.value = getAutocompleteSuggestions(rawInput.value, presetNames(), scope)
   }
 
   // Debounce parse (250 ms — the only typing delay before a table query, see
@@ -71,6 +82,8 @@ export function useDslSearch(presetNames: () => string[]) {
     updateSuggestions()
     debouncedParse()
   })
+  // An empty bar already offers the field picker
+  updateSuggestions()
 
   /** Apply a suggestion from the autocomplete dropdown */
   function applySuggestion(suggestion: Suggestion): void {
@@ -101,8 +114,8 @@ export function useDslSearch(presetNames: () => string[]) {
   function clear(): void {
     rawInput.value = ''
     parseResult.value = { ast: null, isDsl: false, ftsQuery: '', errors: [] }
-    translationResult.value = { columnFilters: {}, presetNames: [], warnings: [] }
-    suggestions.value = []
+    translationResult.value = { columnFilters: {}, presetNames: [], errors: [] }
+    updateSuggestions()
   }
 
   return {

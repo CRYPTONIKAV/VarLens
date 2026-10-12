@@ -21,6 +21,8 @@ import { useSettingsStore } from '../stores/settingsStore'
 import { useCaseTabUrlParam } from '../composables/useViewUrlBindings'
 import { usePermissions } from '../composables/usePermissions'
 import { providePanelResolutionStatus } from '../composables/usePanelResolutionStatus'
+import { useCarrierTarget } from '../composables/useCarrierTarget'
+import CarrierTargetBanner from '../components/case/CarrierTargetBanner.vue'
 
 const {
   selectedCaseId,
@@ -29,9 +31,9 @@ const {
   filteredCount,
   totalCount,
   hasSort,
-  initialSearch,
   caseCount,
   filterToolbarRef,
+  caseShortlistActive,
   variantTableRef,
   panelOpen,
   selectedPanelVariant,
@@ -76,6 +78,7 @@ const lastNonShortlistType = ref<PerTypeTab>('snv')
 const shortlistVisited = ref(false)
 
 watch(selectedVariantType, (next) => {
+  caseShortlistActive.value = next === 'shortlist'
   if (next !== 'shortlist') {
     lastNonShortlistType.value = next
   } else {
@@ -251,8 +254,11 @@ const showVariantTypeTabs = computed(() => tabItems.value.length > 1)
 // VariantTable must never be `'shortlist'`, and it must stay stable
 // across Shortlist toggles so `useVariantData`'s serialized-filter
 // watcher doesn't invalidate cached state.
+// A cohort carrier link narrows the table to its exact variant (#535).
+const { targetFilter } = useCarrierTarget()
 const effectiveFilters = computed<Omit<VariantFilter, 'case_id'>>(() => ({
   ...currentFilters.value,
+  ...targetFilter.value,
   variant_type: variantTableType.value
 }))
 
@@ -304,9 +310,6 @@ function handleImportClick(): void {
 function handleFiltersUpdate(filters: Omit<VariantFilter, 'case_id'>): void {
   currentFilters.value = filters
   annotationScope.value = (filters.annotation_scope as AnnotationScope) ?? 'case'
-  if (initialSearch.value !== undefined && filters.search_query != null) {
-    initialSearch.value = undefined
-  }
 }
 
 function handleResetSort(): void {
@@ -423,6 +426,7 @@ defineExpose({
     -->
     <div v-show="selectedVariantType !== 'shortlist'" class="per-type-region">
       <div class="filter-bar-container">
+        <CarrierTargetBanner />
         <!--
           Pass-9 #3: deferred mount. FilterToolbar is gated on
           `firstActivated` so its `loadFilterOptions` IPC does not fire
@@ -437,7 +441,6 @@ defineExpose({
           :filtered-count="filteredCount"
           :total-count="totalCount"
           :has-sort="hasSort"
-          :initial-search="initialSearch"
           :columns="variantTableRef?.columns"
           :column-active-filters="variantTableRef?.columnActiveFilters"
           :get-export-filters="variantTableRef?.buildQueryFilters"

@@ -101,42 +101,71 @@ export function toShortlistCandidate(row: Variant, isStarred: boolean): Shortlis
 }
 
 /**
- * Run the Stage-1 candidate query for one variant type.
- *
- * Rows are ordered by `variants.id` ASC before the LIMIT, so the cap is
- * deterministic across invocations. This is NOT a pre-rank by scoring
- * criteria — Stage 2 orders the capped set.
+ * Rows per Stage-1 page on both backends. Bounds memory to
+ * O(topN + page) while every eligible candidate is still scored (#537).
+ */
+export const SHORTLIST_PAGE_SIZE = 2000
+
+/**
+ * Stream every eligible candidate of one variant type to `onPage` in
+ * keyset pages of `pageSize` rows (ordered by `variants.id`, only as a
+ * deterministic paging key — Stage 2 ranks the rows), preparing panel
+ * regions once.
  *
  * @param filter From {@link toShortlistVariantFilter}, with any active gene
  *   panel already resolved into `panel_intervals` by the caller.
- * @param limit Row cap — the caller passes `topN * 4` so Stage-3 tie-breaking
- *   has headroom.
  */
-export function queryVariantsByType(
+export function forEachCandidatePage(
   source: ShortlistQuerySource,
   filter: VariantFilter,
-  limit: number
-): ShortlistCandidate[] {
-  const { db, filterBuilder } = source
+  pageSize: number,
+  onPage: (rows: ShortlistCandidate[]) => void
+): void {
+  withPanelIntervals(source, filter, () => {
+    let afterId = 0
+    for (;;) {
+      const rows = selectPage(source, filter, pageSize, afterId)
+      if (rows.length > 0) onPage(rows)
+      if (rows.length < pageSize) return
+      afterId = rows[rows.length - 1].id
+    }
+  })
+}
+
+function withPanelIntervals<T>(
+  { filterBuilder }: ShortlistQuerySource,
+  filter: VariantFilter,
+  run: () => T
+): T {
   const usesTempTable = filterBuilder.preparePanelIntervals(filter)
   try {
-    const compiled = filterBuilder
-      .build(filter)
-      .select(
-        sql<number>`COALESCE((SELECT cva.starred FROM case_variant_annotations cva WHERE cva.case_id = variants.case_id AND cva.variant_id = variants.id LIMIT 1), 0)`.as(
-          'is_starred_int'
-        )
-      )
-      .orderBy(sql`variants.id ASC`)
-      .limit(limit)
-      .compile()
-    const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Array<
-      Variant & { is_starred_int?: number }
-    >
-    return rows.map(({ is_starred_int, ...row }) =>
-      toShortlistCandidate(row as Variant, is_starred_int === 1)
-    )
+    return run()
   } finally {
     if (usesTempTable) filterBuilder.cleanupPanelIntervalsTable()
   }
+}
+
+function selectPage(
+  { db, filterBuilder }: ShortlistQuerySource,
+  filter: VariantFilter,
+  limit: number,
+  afterId: number
+): ShortlistCandidate[] {
+  const compiled = filterBuilder
+    .build(filter)
+    .select(
+      sql<number>`COALESCE((SELECT cva.starred FROM case_variant_annotations cva WHERE cva.case_id = variants.case_id AND cva.variant_id = variants.id LIMIT 1), 0)`.as(
+        'is_starred_int'
+      )
+    )
+    .where(sql<boolean>`variants.id > ${afterId}`)
+    .orderBy(sql`variants.id ASC`)
+    .limit(limit)
+    .compile()
+  const rows = db.prepare(compiled.sql).all(...compiled.parameters) as Array<
+    Variant & { is_starred_int?: number }
+  >
+  return rows.map(({ is_starred_int, ...row }) =>
+    toShortlistCandidate(row as Variant, is_starred_int === 1)
+  )
 }

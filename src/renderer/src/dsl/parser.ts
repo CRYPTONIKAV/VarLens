@@ -20,7 +20,24 @@ import type {
   Token
 } from './types'
 import { tokenize, isDslInput } from './tokenizer'
-import { findColumn } from './column-registry'
+import {
+  COHORT_ONLY_COLUMNS,
+  findColumn,
+  INFO_FIELD_OPERATORS,
+  isColumnInScope,
+  type FilterScope
+} from './column-registry'
+import { NUMERIC_COLUMN_FILTER_KEYS } from '../../../shared/filters/column-filter-validation'
+import { EXTENSION_FILTERABLE_DOTTED_KEYS } from '../../../shared/types/variant-extension-registry-data'
+import {
+  INFO_FIELD_PREFIX,
+  infoFieldFilterProblem,
+  isValidInfoKey
+} from '../../../shared/filters/info-field-filter'
+
+/** Operators for fields outside the DSL registry (extension and cohort keys). */
+const NUMERIC_OPERATORS: DslOperator[] = ['=', '!=', '<', '>', '<=', '>=']
+const TEXT_OPERATORS: DslOperator[] = ['=', '!=', '~']
 
 const VALID_OPERATORS = new Set<string>([
   '=',
@@ -42,7 +59,10 @@ class Parser {
   private pos: number = 0
   private errors: DslParseError[] = []
 
-  constructor(tokens: Token[]) {
+  constructor(
+    tokens: Token[],
+    private readonly scope: FilterScope
+  ) {
     this.tokens = tokens
   }
 
@@ -50,7 +70,26 @@ class Parser {
     if (this.tokens.length === 0) {
       return { ast: null, errors: [] }
     }
+    const stray = this.tokens.find((t) => t.type === 'unknown')
+    if (stray) {
+      const quote = stray.value.startsWith('"') || stray.value.startsWith("'")
+      this.errors.push({
+        message: quote ? 'Unclosed quote' : `Unexpected character '${stray.value}'`,
+        position: stray.position,
+        length: stray.value.length
+      })
+      return { ast: null, errors: this.errors }
+    }
     const ast = this.parseExpression()
+    // The whole input must be consumed: a valid prefix must never apply on its own
+    const rest = this.peek()
+    if (rest && this.errors.length === 0) {
+      this.errors.push({
+        message: `Unexpected '${rest.value}' after a complete condition`,
+        position: rest.position,
+        length: rest.value.length || 1
+      })
+    }
     return { ast, errors: this.errors }
   }
 
@@ -116,7 +155,16 @@ class Parser {
   /** term = '(' expression ')' | preset_ref | filter_rule */
   private parseTerm(): DslNode | null {
     const token = this.peek()
-    if (!token) return null
+    if (!token) {
+      // Only reachable after a combinator or '(' — the input ended mid-expression
+      const last = this.tokens[this.tokens.length - 1]
+      this.errors.push({
+        message: `Expected a condition after '${last.value}'`,
+        position: last.position,
+        length: last.value.length || 1
+      })
+      return null
+    }
 
     // Parenthesized group
     if (token.type === 'lparen') {
@@ -141,19 +189,11 @@ class Parser {
     const colToken = this.expect('column')
     if (!colToken) return null
 
-    // For is:null/is:notnull, the tokenizer may have already collapsed it
+    // For is:null/is:notnull, the tokenizer has already collapsed it
     const next = this.peek()
     if (next?.type === 'operator' && (next.value === 'is:null' || next.value === 'is:notnull')) {
       this.advance()
-      // Resolve column alias to canonical key (same as the normal path below)
-      const colDef = findColumn(colToken.value)
-      const canonicalKey = colDef?.key ?? colToken.value
-      return {
-        type: 'rule',
-        column: canonicalKey,
-        operator: next.value as DslOperator,
-        value: null
-      }
+      return this.buildRule(colToken, next.value, null, next)
     }
 
     this.expect('colon')
@@ -170,24 +210,9 @@ class Parser {
       if (afterValue === undefined || afterValue.type !== 'colon') {
         this.advance()
         const colDef = findColumn(colToken.value)
-        const canonicalKey = colDef?.key ?? colToken.value
-        // Use '~' (LIKE) if the column supports it, otherwise '=' (exact match)
         const supportsLike = colDef?.operators.includes('~' as DslOperator) ?? false
         const defaultOp: DslOperator = colDef?.type === 'numeric' || !supportsLike ? '=' : '~'
-        // Coerce numeric values to match the explicit column:op:value path
-        let coercedValue: string | number = afterColon.value
-        if (colDef?.type === 'numeric') {
-          const num = Number(afterColon.value)
-          if (!Number.isNaN(num)) {
-            coercedValue = num
-          }
-        }
-        return {
-          type: 'rule',
-          column: canonicalKey,
-          operator: defaultOp,
-          value: coercedValue
-        }
+        return this.buildRule(colToken, defaultOp, afterColon.value, afterColon)
       }
     }
 
@@ -212,11 +237,6 @@ class Parser {
     this.advance()
     const operator = opToken.value as DslOperator
 
-    // is:null and is:notnull don't have a value
-    if (operator === 'is:null' || operator === 'is:notnull') {
-      return { type: 'rule', column: colToken.value, operator, value: null }
-    }
-
     this.expect('colon')
 
     const valToken = this.peek()
@@ -229,23 +249,103 @@ class Parser {
       return null
     }
     this.advance()
+    return this.buildRule(colToken, operator, valToken.value, valToken)
+  }
 
-    // Resolve column alias to canonical key and get type info
-    const colDef = findColumn(colToken.value)
-    const canonicalKey = colDef?.key ?? colToken.value
-
-    // Coerce numeric values only for numeric columns
-    // This prevents chr:=:01 becoming chr:=:1 or chr:=:X failing
-    let value: string | number = valToken.value
-    if (colDef?.type === 'numeric') {
-      const numVal = Number(valToken.value)
-      if (Number.isFinite(numVal)) {
-        value = numVal
+  /**
+   * Resolve the field (alias → canonical key) and check operator and raw value
+   * against its type before any coercion; records an error and returns null
+   * for anything the backend would not apply as written.
+   */
+  private buildRule(
+    colToken: Token,
+    operator: DslOperator,
+    raw: string | null,
+    valueToken: Token
+  ): DslFilterRule | null {
+    const fail = (message: string, token: Token = colToken): null => {
+      this.errors.push({ message, position: token.position, length: token.value.length || 1 })
+      return null
+    }
+    if (colToken.value.toLowerCase().startsWith(INFO_FIELD_PREFIX)) {
+      if (this.scope === 'cohort') {
+        return fail(
+          `'${colToken.value}' is a per-case INFO field and cannot filter the cohort view`
+        )
       }
+      return buildInfoRule(colToken, operator, raw, valueToken, fail)
+    }
+    const colDef = findColumn(colToken.value)
+    const column = colDef?.key ?? colToken.value
+    // Reject before any request: the other view's backend cannot filter on it
+    if (colDef && !isColumnInScope(colDef, this.scope)) {
+      return fail(`'${colToken.value}' is a per-case field and cannot filter the cohort view`)
+    }
+    if (this.scope === 'case' && COHORT_ONLY_COLUMNS.some((c) => c.key === column)) {
+      return fail(`'${colToken.value}' is a cohort field and cannot filter a single case`)
+    }
+    const numeric = colDef ? colDef.type === 'numeric' : NUMERIC_COLUMN_FILTER_KEYS.has(column)
+    if (!colDef && !numeric && !EXTENSION_FILTERABLE_DOTTED_KEYS.has(column)) {
+      return fail(`Unknown field '${colToken.value}'`)
     }
 
-    return { type: 'rule', column: canonicalKey, operator, value }
+    if (operator === 'is:null' || operator === 'is:notnull') {
+      return { type: 'rule', column, operator, value: null }
+    }
+    const allowed = colDef?.operators ?? (numeric ? NUMERIC_OPERATORS : TEXT_OPERATORS)
+    if (!allowed.includes(operator)) {
+      return fail(`Operator '${operator}' is not supported for '${colToken.value}'`, valueToken)
+    }
+
+    const text = raw ?? ''
+    if (numeric) {
+      // Validate the raw text: Number('') is 0, and a blank value is not a number
+      const num = Number(text)
+      if (text.trim() === '' || !Number.isFinite(num)) {
+        return fail(`'${text}' is not a number for '${colToken.value}'`, valueToken)
+      }
+      return { type: 'rule', column, operator, value: num }
+    }
+    if (operator === '~' && text.trim() === '') {
+      return fail(`'${colToken.value}:~' needs a non-empty value`, valueToken)
+    }
+    // Text values are never coerced: chr:=:01 must stay '01'
+    return { type: 'rule', column, operator, value: text }
   }
+}
+
+/**
+ * `info.<KEY>` (#538): a custom VCF INFO value, case view only. The key keeps
+ * its case (VCF IDs are case-sensitive); `=`/`!=`/`~` values stay text — the
+ * backend compares numerically only where both sides are numbers.
+ */
+function buildInfoRule(
+  colToken: Token,
+  operator: DslOperator,
+  raw: string | null,
+  valueToken: Token,
+  fail: (message: string, token?: Token) => null
+): DslFilterRule | null {
+  const key = colToken.value.slice(INFO_FIELD_PREFIX.length)
+  const column = `${INFO_FIELD_PREFIX}${key}`
+  if (!isValidInfoKey(key)) return fail(`'${key}' is not a valid INFO field name`)
+  if (operator === 'is:null' || operator === 'is:notnull') {
+    return { type: 'rule', column, operator, value: null }
+  }
+  if (!INFO_FIELD_OPERATORS.includes(operator)) {
+    return fail(`Operator '${operator}' is not supported for '${column}'`, valueToken)
+  }
+  const text = raw ?? ''
+  if (operator === '~' && text.trim() === '') {
+    return fail(`'${column}:~' needs a non-empty value`, valueToken)
+  }
+  const problem = infoFieldFilterProblem(column, {
+    operator: operator === '~' ? 'like' : (operator as '=' | '!=' | '<' | '>' | '<=' | '>='),
+    value: text
+  })
+  if (problem !== null) return fail(problem, valueToken)
+  const range = operator !== '=' && operator !== '!=' && operator !== '~'
+  return { type: 'rule', column, operator, value: range ? Number(text) : text }
 }
 
 /**
@@ -254,7 +354,7 @@ class Parser {
  * If the input doesn't look like DSL (no colons in filter pattern),
  * returns it as an FTS query instead.
  */
-export function parseDsl(input: string): DslParseResult {
+export function parseDsl(input: string, scope: FilterScope = 'case'): DslParseResult {
   const trimmed = input.trim()
 
   if (trimmed === '') {
@@ -266,7 +366,7 @@ export function parseDsl(input: string): DslParseResult {
   }
 
   const tokens = tokenize(trimmed)
-  const parser = new Parser(tokens)
+  const parser = new Parser(tokens, scope)
   const { ast, errors } = parser.parse()
 
   return { ast, isDsl: true, ftsQuery: '', errors }

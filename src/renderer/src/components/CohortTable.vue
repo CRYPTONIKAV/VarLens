@@ -1,21 +1,7 @@
 <template>
   <div class="cohort-table-container">
     <!-- IPC Error Banner -->
-    <v-alert
-      v-if="error"
-      type="error"
-      variant="tonal"
-      closable
-      class="mb-4"
-      @click:close="error = null"
-    >
-      <div class="d-flex align-center justify-space-between">
-        <span>{{ error.message || 'Failed to load cohort data' }}</span>
-        <v-btn variant="tonal" size="small" :prepend-icon="mdiRefresh" @click="handleRetry">
-          Retry
-        </v-btn>
-      </div>
-    </v-alert>
+    <QueryErrorAlert :error="error" :stale="variants.length > 0" @retry="handleRetry" />
 
     <!-- Rebuild indicator — the cohort summary table is rebuilt in a worker
          whenever cases are imported/deleted, and the cohort view can't show
@@ -153,13 +139,15 @@ import { useDeferredReload } from '../composables/useDeferredReload'
 import CohortFilterBar from './cohort/CohortFilterBar.vue'
 import CohortDataTable from './cohort/CohortDataTable.vue'
 import AnnotationDialogs from './AnnotationDialogs.vue'
+import QueryErrorAlert from './table-state/QueryErrorAlert.vue'
 // Column composable
 import { useCohortColumns } from './cohort/useCohortColumns'
 // Types
 import type { CohortVariant } from '../../../shared/types/cohort'
 import type { CohortQueryParams } from '../composables/useCohortData'
 import type { ColumnFiltersParam } from '../../../shared/types/column-filters'
-import { mdiDatabaseSync, mdiRefresh } from '@mdi/js'
+import { canonicalCohortFilterKey } from '../../../shared/filters/cohort-column-filter-keys'
+import { mdiDatabaseSync } from '@mdi/js'
 import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
 import type { AcmgClassification } from '../../../shared/config/domain.config'
 import { getCurrentUnsupportedReason } from '../utils/backend-capabilities'
@@ -167,20 +155,11 @@ import { isWebRuntime } from '../utils/runtime-mode'
 import { stripVueProxies } from '../utils/stripVueProxies'
 import { activeMaxCarriers } from '../utils/filters/maxCarriers'
 import { useCapabilityStore } from '../stores/capabilityStore'
+import type { CarrierTarget } from '../composables/useCarrierTarget'
 
 // Emit for navigation and row click
 const emit = defineEmits<{
-  'navigate-to-case': [
-    payload: {
-      caseId: number
-      chr: string
-      pos: number
-      ref: string
-      alt: string
-      geneSymbol: string | null
-      cdna: string | null
-    }
-  ]
+  'navigate-to-case': [target: CarrierTarget]
   'row-click': [variant: CohortVariant]
   deselect: []
 }>()
@@ -287,7 +266,13 @@ const buildCohortQueryParams = (): Omit<
       ? {
           ...(cohortColumnFilters.value ?? {}),
           ...filters.value.columnFilters,
-          ...(cohortFilterBarRef.value?.dslColumnFilters ?? {})
+          // Canonical keys so a DSL condition replaces its header filter (`cadd` vs `cadd_phred`).
+          ...Object.fromEntries(
+            Object.entries(cohortFilterBarRef.value?.dslColumnFilters ?? {}).map(([key, f]) => [
+              canonicalCohortFilterKey(key),
+              f
+            ])
+          )
         }
       : undefined,
   active_panel_ids:
@@ -553,15 +538,9 @@ const handleExport = (format?: 'csv' | 'xlsx') => {
 }
 
 const handleNavigateToCase = (payload: { caseId: number; item: CohortVariant }) => {
-  emit('navigate-to-case', {
-    caseId: payload.caseId,
-    chr: payload.item.chr,
-    pos: payload.item.pos,
-    ref: payload.item.ref,
-    alt: payload.item.alt,
-    geneSymbol: payload.item.gene_symbol,
-    cdna: payload.item.cdna
-  })
+  const v = payload.item
+  const identity = { chr: v.chr, pos: v.pos, ref: v.ref, alt: v.alt, variantType: v.variant_type }
+  emit('navigate-to-case', { caseId: payload.caseId, ...identity })
 }
 
 // Hydrate annotations for the visible rows (page-change guarded, debounced)
@@ -690,7 +669,7 @@ const refresh = async () => {
   // The case set may have changed: cached carrier lists can name deleted cases.
   invalidateCarriers()
 }
-defineExpose({ refresh, softRefresh })
+defineExpose({ refresh, softRefresh, filterBar: cohortFilterBarRef })
 </script>
 
 <style scoped>

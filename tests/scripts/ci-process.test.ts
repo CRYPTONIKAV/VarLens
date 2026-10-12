@@ -74,12 +74,17 @@ describe('isolated gate processes', () => {
       const heartbeat = join(directory, 'heartbeat')
       const identity = join(directory, 'pid')
       const controller = new AbortController()
-      const descendant = `const fs=require('node:fs');process.on('SIGTERM',()=>{});fs.writeFileSync(${JSON.stringify(identity)},String(process.pid));let count=0;setInterval(()=>fs.writeFileSync(${JSON.stringify(heartbeat)},String(++count)),10)`
-      const leader = `require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore'});process.on('SIGTERM',()=>process.exit(0));setInterval(()=>{},1000)`
-      const pending = runCommand(process.execPath, ['-e', leader], {
-        signal: controller.signal,
-        quiet: true
-      })
+      // Paths travel as argv, never spliced into the evaluated code.
+      const descendant = `const fs=require('node:fs');const [identity,heartbeat]=process.argv.slice(1);process.on('SIGTERM',()=>{});fs.writeFileSync(identity,String(process.pid));let count=0;setInterval(()=>fs.writeFileSync(heartbeat,String(++count)),10)`
+      const leader = `require('node:child_process').spawn(process.execPath,['-e',...process.argv.slice(1)],{stdio:'ignore'});process.on('SIGTERM',()=>process.exit(0));setInterval(()=>{},1000)`
+      const pending = runCommand(
+        process.execPath,
+        ['-e', leader, descendant, identity, heartbeat],
+        {
+          signal: controller.signal,
+          quiet: true
+        }
+      )
       // Install rejection handling before aborting, without masking the assertion.
       const result = pending.catch((error: Error) => error)
       try {

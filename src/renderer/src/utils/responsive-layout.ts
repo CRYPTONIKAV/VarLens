@@ -30,6 +30,21 @@ export function clampDetailPanelWidth(requestedWidth: number, viewportWidth: num
   return Math.max(DETAIL_PANEL_MIN_WIDTH, Math.min(upper, requestedWidth))
 }
 
+export const FILTER_DRAWER_MIN_WIDTH = 250
+export const FILTER_DRAWER_MAX_WIDTH = 500
+
+/**
+ * Effective filter-drawer width: the user's preferred width capped at
+ * `min(500px, 40vw)`, or the full viewport when 40vw is below the 250 px
+ * minimum. The preferred width is an input only, so a temporarily narrow
+ * window never overwrites the stored desktop preference.
+ */
+export function filterDrawerWidth(preferredWidth: number, viewportWidth: number): number {
+  const cap = Math.min(FILTER_DRAWER_MAX_WIDTH, Math.floor(viewportWidth * 0.4))
+  if (cap < FILTER_DRAWER_MIN_WIDTH) return viewportWidth
+  return Math.max(FILTER_DRAWER_MIN_WIDTH, Math.min(cap, preferredWidth))
+}
+
 /**
  * Number of data columns shown by default at a viewport width. Explicit user
  * column choices always win over this budget (see `isColumnVisible`).

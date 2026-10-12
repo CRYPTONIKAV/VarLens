@@ -5,7 +5,7 @@
  * already supports (from Phase 2). Also collects @preset references.
  */
 
-import type { DslNode, DslFilterRule, DslOperator } from './types'
+import type { DslNode, DslFilterRule, DslGroup, DslOperator } from './types'
 import type { ColumnFilter } from '../../../shared/types/column-filters'
 import { findColumn } from './column-registry'
 
@@ -15,86 +15,88 @@ export interface TranslationResult {
   columnFilters: Record<string, ColumnFilter & { includeEmpty?: boolean }>
   /** Names of @preset references found in the expression */
   presetNames: string[]
-  /** Warnings about unsupported features (e.g., cross-column OR) */
-  warnings: string[]
+  /**
+   * Expressions a flat column-filter map cannot represent faithfully. When
+   * non-empty the whole expression must be rejected — never partially applied.
+   */
+  errors: string[]
 }
 
-/** Map DSL operator to backend ColumnFilter operator */
-function mapOperator(dslOp: DslOperator): ColumnFilter['operator'] | null {
-  switch (dslOp) {
-    case '=':
-      return '='
-    case '!=':
-      return '!='
-    case '<':
-      return '<'
-    case '>':
-      return '>'
-    case '<=':
-      return '<='
-    case '>=':
-      return '>='
-    case '~':
-      return 'like'
-    case '!~':
-      return 'like' // Backend handles NOT via separate logic
-    case '^':
-      return 'like' // Translated to 'value%' prefix
-    case '$':
-      return 'like' // Translated to '%value' suffix
-    case 'is:null':
-      return 'is_null'
-    case 'is:notnull':
-      return 'not_null'
-    default:
-      return null
+/** DSL → backend operator; `!~`, `^`, `$` are rejected by the parser. */
+const BACKEND_OPERATORS: Partial<Record<DslOperator, ColumnFilter['operator']>> = {
+  '=': '=',
+  '!=': '!=',
+  '<': '<',
+  '>': '>',
+  '<=': '<=',
+  '>=': '>=',
+  '~': 'like',
+  'is:null': 'is_null',
+  'is:notnull': 'not_null'
+}
+
+/** A rule as the user would type it, for error messages. */
+export function formatRule(rule: DslFilterRule): string {
+  return rule.value === null
+    ? `${rule.column}:${rule.operator}`
+    : `${rule.column}:${rule.operator}:${rule.value}`
+}
+
+function describe(node: DslNode): string {
+  if (node.type === 'rule') return formatRule(node)
+  if (node.type === 'preset') return `@${node.name}`
+  return `(${node.children.map(describe).join(` ${node.combinator} `)})`
+}
+
+function setFilter(
+  result: TranslationResult,
+  column: string,
+  filter: ColumnFilter,
+  source: string
+): void {
+  if (result.columnFilters[column] !== undefined) {
+    // A flat map holds one condition per field: overwriting would drop a bound
+    result.errors.push(
+      `${source}: only one condition per field is supported ('${column}' is used twice)`
+    )
+    return
   }
-}
-
-/** Determine if a column is numeric (for NULL-inclusive behavior) */
-function isNumericColumn(columnKey: string): boolean {
-  const col = findColumn(columnKey)
-  return col?.type === 'numeric'
+  result.columnFilters[column] = filter
 }
 
 function translateRule(rule: DslFilterRule, result: TranslationResult): void {
   const { column, operator, value } = rule
-
-  // Dedicated operators: `= ''` would be coerced to `= 0` on numeric columns.
-  if (operator === 'is:null') {
-    result.columnFilters[column] = { operator: 'is_null', value: '' }
+  const backendOp = BACKEND_OPERATORS[operator]
+  if (backendOp === undefined) {
+    result.errors.push(`${formatRule(rule)}: operator '${operator}' is not supported`)
     return
   }
-  if (operator === 'is:notnull') {
-    result.columnFilters[column] = { operator: 'not_null', value: '' }
-    return
+  // Null checks carry no value (`= ''` would be coerced to `= 0` on numeric columns)
+  const filter: ColumnFilter =
+    backendOp === 'is_null' || backendOp === 'not_null'
+      ? { operator: backendOp, value: '' }
+      : { operator: backendOp, value: value ?? '' }
+  if (findColumn(column)?.type === 'numeric' && ['<', '>', '<=', '>='].includes(operator)) {
+    filter.includeEmpty = true
   }
+  setFilter(result, column, filter, formatRule(rule))
+}
 
-  const backendOp = mapOperator(operator)
-  if (!backendOp) return
-
-  let filterValue: string | number | string[] = value ?? ''
-
-  // Handle prefix/suffix operators
-  if (operator === '^') {
-    filterValue = `${value}`
-  } else if (operator === '$') {
-    filterValue = `${value}`
-  }
-
-  const includeEmpty = isNumericColumn(column) && ['<', '>', '<=', '>='].includes(operator)
-
-  if (result.columnFilters[column] !== undefined) {
-    result.warnings.push(
-      `Multiple conditions on column '${column}' are not supported — only the last condition was applied.`
+/** Only equality alternatives on one field have a faithful flat form: IN. */
+function translateOr(node: DslGroup, result: TranslationResult): void {
+  const rules = node.children.filter((c): c is DslFilterRule => c.type === 'rule')
+  const column = rules[0]?.column
+  const faithful =
+    rules.length === node.children.length &&
+    rules.every((r) => r.column === column && r.operator === '=')
+  if (!faithful || column === undefined) {
+    result.errors.push(
+      `${describe(node)}: OR is only supported between '=' conditions on the same field`
     )
+    return
   }
-
-  result.columnFilters[column] = {
-    operator: backendOp,
-    value: filterValue,
-    ...(includeEmpty ? { includeEmpty: true } : {})
-  }
+  const values = rules.map((r) => String(r.value))
+  setFilter(result, column, { operator: 'in', value: values }, describe(node))
 }
 
 function translateNode(node: DslNode, result: TranslationResult): void {
@@ -106,31 +108,8 @@ function translateNode(node: DslNode, result: TranslationResult): void {
       result.presetNames.push(node.name)
       break
     case 'group':
-      if (node.combinator === 'OR') {
-        // OR groups: check if all rules target the same column
-        const rules = node.children.filter((c): c is DslFilterRule => c.type === 'rule')
-        const columns = new Set(rules.map((r) => r.column))
-        if (columns.size === 1 && rules.length === node.children.length) {
-          // Same-column OR: translate to 'in' operator with combined values
-          const column = rules[0].column
-          const values = rules.map((r) => String(r.value ?? ''))
-          result.columnFilters[column] = { operator: 'in', value: values }
-        } else {
-          // Cross-column OR: not supported by backend ColumnFiltersParam.
-          // Merge as AND with a warning.
-          result.warnings.push(
-            'Cross-column OR is not fully supported — filters are combined with AND. Use parentheses to group same-column conditions.'
-          )
-          for (const child of node.children) {
-            translateNode(child, result)
-          }
-        }
-      } else {
-        // AND group: merge all children
-        for (const child of node.children) {
-          translateNode(child, result)
-        }
-      }
+      if (node.combinator === 'OR') translateOr(node, result)
+      else for (const child of node.children) translateNode(child, result)
       break
   }
 }
@@ -138,20 +117,57 @@ function translateNode(node: DslNode, result: TranslationResult): void {
 /**
  * Translate a parsed DSL AST into backend filter structures.
  *
- * AND groups: all rules merged into a single columnFilters map.
- * OR groups: only same-column OR is supported (translated to 'in' operator).
- * Cross-column OR is recorded as a warning — the backend ColumnFiltersParam
- * cannot represent cross-column OR, so rules are merged as AND with a warning.
- *
- * @preset references are collected into presetNames for the caller
- * to look up and merge from the preset store.
+ * AND groups merge into one column-filter map (one condition per field).
+ * OR is only representable as `in` over equality alternatives on one field.
+ * Everything else — repeated fields, cross-field or non-equality OR, several
+ * @presets (preset merging is overwrite/union, not AND) — is reported in
+ * `errors` so the caller rejects the expression atomically.
  */
 export function translateAst(ast: DslNode): TranslationResult {
-  const result: TranslationResult = {
-    columnFilters: {},
-    presetNames: [],
-    warnings: []
-  }
+  const result: TranslationResult = { columnFilters: {}, presetNames: [], errors: [] }
   translateNode(ast, result)
+  if (result.presetNames.length > 1) {
+    result.errors.push(
+      `${result.presetNames.map((n) => `@${n}`).join(', ')}: only one @preset per expression is supported`
+    )
+  }
   return result
+}
+
+const DSL_OPERATORS: Record<ColumnFilter['operator'], string> = {
+  '=': '=',
+  '!=': '!=',
+  '<': '<',
+  '>': '>',
+  '<=': '<=',
+  '>=': '>=',
+  like: '~',
+  in: '=',
+  is_null: 'is:null',
+  not_null: 'is:notnull'
+}
+
+function quoteValue(value: string | number): string {
+  const text = String(value)
+  if (/^[^\s:()'"=<>!~^$@\\]+$/.test(text) && !/^(and|or)$/i.test(text)) return text
+  return `"${text.replace(/[\\"]/g, (c) => `\\${c}`)}"`
+}
+
+/**
+ * The DSL text for a translated column-filter map — the inverse of
+ * {@link translateAst} for everything it produces. Used to keep the committed
+ * search text (and so `?q=`) in step when one applied condition is removed.
+ */
+export function serializeColumnFilters(columnFilters: Record<string, ColumnFilter>): string {
+  return Object.entries(columnFilters)
+    .map(([column, { operator, value }]) => {
+      const op = DSL_OPERATORS[operator]
+      if (operator === 'is_null' || operator === 'not_null') return `${column}:${op}`
+      if (Array.isArray(value)) {
+        const alternatives = value.map((v) => `${column}:=:${quoteValue(v)}`).join(' OR ')
+        return value.length > 1 ? `(${alternatives})` : alternatives
+      }
+      return `${column}:${op}:${quoteValue(value)}`
+    })
+    .join(' AND ')
 }

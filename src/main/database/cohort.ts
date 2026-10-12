@@ -21,6 +21,10 @@ import type {
 import type { ColumnFilterMeta, ColumnFiltersParam } from '../../shared/types/column-filters'
 import { capCohortDistinctCount } from '../../shared/types/column-filters'
 import { assertValidColumnFilterValues } from '../../shared/filters/column-filter-validation'
+import {
+  COHORT_SUMMARY_FILTER_COLUMNS,
+  normalizeCohortColumnFilters
+} from '../../shared/filters/cohort-column-filter-keys'
 import { booleanSearchSql } from '../../shared/utils/boolean-search'
 import { emitTerm } from './search/cohort-search-emitter'
 import { buildBaseWhere, type BaseFilterInput } from './variant-where-builder'
@@ -139,18 +143,16 @@ export class CohortService {
     // dotted extension keys) so the error matches the PostgreSQL cohort path.
     assertValidColumnFilterValues(params.column_filters)
 
-    // Remap column_filters keys through SORTABLE_COLUMNS to preserve the
-    // existing alias mapping (e.g. 'cadd_phred' -> 'cadd') and the whitelist
-    // behaviour. buildBaseWhere emits ${baseAlias}.${column} directly, so
-    // unmapped keys would produce SQL referencing non-existent columns on
-    // cohort_variant_summary.
+    // Canonicalise aliases (DSL `cadd` -> `cadd_phred`) and reject keys the
+    // summary cannot filter (#528), then map bare keys to their stored
+    // cohort_variant_summary column: buildBaseWhere emits ${baseAlias}.${column}.
+    const columnFilters = normalizeCohortColumnFilters(params.column_filters)
     let remappedColumnFilters: ColumnFiltersParam | undefined
-    if (params.column_filters !== undefined) {
+    if (columnFilters !== undefined) {
       remappedColumnFilters = {}
-      for (const [key, filter] of Object.entries(params.column_filters)) {
-        const sqlColumn = SORTABLE_COLUMNS[key]
-        if (sqlColumn === undefined) continue
-        remappedColumnFilters[sqlColumn] = filter
+      for (const [key, filter] of Object.entries(columnFilters)) {
+        const sqlColumn = COHORT_SUMMARY_FILTER_COLUMNS[key]
+        if (sqlColumn !== undefined) remappedColumnFilters[sqlColumn] = filter
       }
     }
 
@@ -188,11 +190,9 @@ export class CohortService {
 
     // Extension filter via EXISTS subquery (cvs has no variant_id, so we
     // correlate on chr/pos/ref/alt/variant_type back to variants + extension).
-    // Uses params.column_filters (NOT the remapped version — extension keys
-    // are dotted like 'cnv.copy_number' and don't need SORTABLE_COLUMNS
-    // remapping; the remap would silently drop them).
-    if (params.column_filters !== undefined) {
-      const ext = buildExtensionExistsClauses(params.column_filters, 'cvs')
+    // Dotted extension keys ('cnv.copy_number') are kept by the normaliser.
+    if (columnFilters !== undefined) {
+      const ext = buildExtensionExistsClauses(columnFilters, 'cvs')
       if (ext.whereClause !== '') {
         whereConditions.push(ext.whereClause)
         paramsArray.push(...ext.params)

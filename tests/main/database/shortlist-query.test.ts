@@ -1,5 +1,5 @@
 /**
- * Tests for `queryVariantsByType` — Stage 1 of the unified shortlist pipeline.
+ * Tests for `forEachCandidatePage` — Stage 1 of the unified shortlist pipeline.
  *
  * The helper is the ONLY DB-touching module in the shortlist hot path
  * (spec §3 stage boundary commitment). These tests verify:
@@ -23,7 +23,7 @@ import { initializeSchema } from '../../../src/main/database/schema'
 import { runMigrations } from '../../../src/main/database/migrations'
 import { createRepositories } from '../../../src/main/database/createRepositories'
 import {
-  queryVariantsByType,
+  forEachCandidatePage,
   toShortlistVariantFilter
 } from '../../../src/main/database/shortlist-query'
 import { VariantFilterBuilder } from '../../../src/main/database/VariantFilterBuilder'
@@ -80,23 +80,36 @@ function seedMinimalCase(db: DatabaseType, caseId: number): void {
   ).run(4)
 }
 
-describe('queryVariantsByType()', () => {
+describe('forEachCandidatePage()', () => {
   let db: DatabaseType
 
   let filterBuilder: VariantFilterBuilder
 
-  /** Stage-1 query for one type, as ShortlistService runs it (no panel active). */
+  /** Stage-1 pages for one type, as ShortlistService runs it (no panel active). */
+  function pages(
+    caseId: number,
+    variantType: VariantTypeKey,
+    filters: Partial<FilterState>,
+    pageSize: number
+  ): ShortlistCandidate[][] {
+    const out: ShortlistCandidate[][] = []
+    forEachCandidatePage(
+      { db, filterBuilder },
+      toShortlistVariantFilter(caseId, variantType, filters),
+      pageSize,
+      (rows) => out.push(rows)
+    )
+    return out
+  }
+
+  /** Every Stage-1 candidate for one type. */
   function query(
     caseId: number,
     variantType: VariantTypeKey,
     filters: Partial<FilterState>,
-    limit: number
+    pageSize: number
   ): ShortlistCandidate[] {
-    return queryVariantsByType(
-      { db, filterBuilder },
-      toShortlistVariantFilter(caseId, variantType, filters),
-      limit
-    )
+    return pages(caseId, variantType, filters, pageSize).flat()
   }
 
   beforeEach(() => {
@@ -174,14 +187,14 @@ describe('queryVariantsByType()', () => {
     expect(rows[0].is_starred).toBe(false)
   })
 
-  it('respects the limit cap', () => {
+  it('caps each page at pageSize', () => {
     for (let i = 10; i < 20; i++) {
       db.prepare(
         `INSERT INTO variants (id, case_id, variant_type, chr, pos, ref, alt)
          VALUES (?, 1, 'snv', '1', ?, 'A', 'T')`
       ).run(i, i * 100)
     }
-    const rows = query(1, 'snv', {} as Partial<FilterState>, 5)
+    const rows = pages(1, 'snv', {} as Partial<FilterState>, 5)[0]
     expect(rows).toHaveLength(5)
   })
 
@@ -270,13 +283,28 @@ describe('queryVariantsByType()', () => {
          VALUES (?, 1, 'snv', '1', ?, 'A', 'T', 'MODERATE')`
       ).run(i, i * 100)
     }
-    const rows = query(1, 'snv', {} as Partial<FilterState>, 5)
+    const rows = pages(1, 'snv', {} as Partial<FilterState>, 5)[0]
     expect(rows).toHaveLength(5)
     const ids = rows.map((r) => r.id)
     // Deterministic lowest-5 IDs: existing id=1 (BRCA1) + ids 10-13.
     expect(ids).toEqual([1, 10, 11, 12, 13])
     // And assert ascending order as the contract guarantees.
     expect([...ids].sort((a, b) => a - b)).toEqual(ids)
+  })
+
+  it('forEachCandidatePage streams every eligible row in id-keyset pages', () => {
+    for (let i = 10; i < 30; i++) {
+      db.prepare(
+        `INSERT INTO variants (id, case_id, variant_type, chr, pos, ref, alt)
+         VALUES (?, 1, 'snv', '1', ?, 'A', 'T')`
+      ).run(i, i * 100)
+    }
+    const pages: number[][] = []
+    forEachCandidatePage({ db, filterBuilder }, toShortlistVariantFilter(1, 'snv', {}), 8, (rows) =>
+      pages.push(rows.map((r) => r.id))
+    )
+    expect(pages.map((p) => p.length)).toEqual([8, 8, 5])
+    expect(pages.flat()).toEqual([1, ...Array.from({ length: 20 }, (_, i) => i + 10)])
   })
 
   it('snv scope is exact: indel rows are not swept in as on the variant table', () => {
@@ -323,12 +351,16 @@ describe('queryVariantsByType()', () => {
 
     it('resolved panel regions restrict by overlap, small and large interval sets alike', () => {
       const region = { chr: '1', start: 40_000, end: 60_000 }
-      const run = (intervals: Array<{ chr: string; start: number; end: number }>): number[] =>
-        queryVariantsByType(
+      const run = (intervals: Array<{ chr: string; start: number; end: number }>): number[] => {
+        const ids: number[] = []
+        forEachCandidatePage(
           { db, filterBuilder },
           { ...toShortlistVariantFilter(1, 'snv', {}), panel_intervals: intervals },
-          100
-        ).map((r) => r.id)
+          100,
+          (rows) => ids.push(...rows.map((r) => r.id))
+        )
+        return ids
+      }
 
       expect(run([region])).toEqual([50])
       // >= 50 intervals switches the builder to its temp table.

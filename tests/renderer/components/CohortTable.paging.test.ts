@@ -172,6 +172,39 @@ describe('CohortTable paging', () => {
     expect(exportCohort.mock.calls[0][0]).toEqual(tableFilters)
   })
 
+  it('lets a DSL CADD condition replace the CADD header filter instead of conflicting', async () => {
+    // The bar exposes DSL conditions under the DSL key `cadd`; the header uses `cadd_phred`.
+    const BarWithDsl = defineComponent({
+      name: 'CohortFilterBar',
+      emits: ['filter-change'],
+      setup(_, { expose }) {
+        expose({ dslColumnFilters: { cadd: { operator: '>=', value: 30 } } })
+        return () => h('div')
+      }
+    })
+    wrapper.unmount()
+    wrapper = mount(CohortTable, {
+      global: {
+        plugins: [vuetify, pinia],
+        provide: { [FiltersKey as symbol]: filtersCtx },
+        stubs: {
+          CohortDataTable: CohortDataTableStub,
+          CohortFilterBar: BarWithDsl,
+          AnnotationDialogs: true
+        }
+      }
+    })
+    await flushPromises()
+    await table().vm.$emit('column-filters-change', {
+      cadd_phred: { operator: '>=', value: 25 }
+    })
+    await vi.waitFor(() => expect(queries().at(-1)).toHaveProperty('column_filters'))
+
+    expect(queries().at(-1)?.column_filters).toEqual({
+      cadd_phred: { operator: '>=', value: 30 }
+    })
+  })
+
   it('reuses the cursor although only page 1 asks for the count', async () => {
     await goToPage(2)
 
@@ -251,5 +284,23 @@ describe('CohortTable paging', () => {
     filtersCtx.filters.value.maxCarriers = null
     await bar.vm.$emit('filter-change')
     await vi.waitFor(() => expect(queries().at(-1)).not.toHaveProperty('carrier_count_max'))
+  })
+
+  // #530 parity: a failed refresh labels the rows still shown as previous results.
+  it('labels stale rows after a failed refresh and retries with the current filters', async () => {
+    getVariants.mockRejectedValueOnce(new Error('HTTP 500'))
+    filtersCtx.filters.value.maxCarriers = 3
+    await wrapper.findComponent({ name: 'CohortFilterBar' }).vm.$emit('filter-change')
+    await flushPromises()
+
+    const alert = wrapper.find('.query-error-alert')
+    expect(alert.text()).toContain('Showing previous results')
+    expect(alert.text()).toContain('HTTP 500')
+    expect(shownRows()).toEqual(['v0'])
+
+    await alert.find('button').trigger('click')
+    await flushPromises()
+    expect(queries().at(-1)).toMatchObject({ carrier_count_max: 3 })
+    expect(wrapper.find('.query-error-alert').exists()).toBe(false)
   })
 })
