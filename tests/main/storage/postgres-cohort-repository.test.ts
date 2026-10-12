@@ -374,7 +374,7 @@ describe('PostgresCohortRepository', () => {
           unknown: { operator: '=', value: 'x' }
         }
       })
-    ).rejects.toThrow('Unsupported PostgreSQL cohort column filter(s): unknown')
+    ).rejects.toThrow('Unsupported cohort column filter(s): unknown')
     expect(query).not.toHaveBeenCalled()
   })
 

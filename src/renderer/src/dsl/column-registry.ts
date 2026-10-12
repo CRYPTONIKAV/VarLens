@@ -28,7 +28,16 @@ export interface FilterColumnDef {
   operators: DslOperator[]
   /** Common values for autocomplete suggestions */
   commonValues?: CommonValue[]
+  /**
+   * Per-case fields the cohort summary does not hold (#528). The cohort
+   * backends reject a filter on them; autocomplete/validation should not
+   * offer them in the cohort view.
+   */
+  caseOnly?: true
 }
+
+/** Which variant view a filter is written for. */
+export type FilterScope = 'case' | 'cohort'
 
 const NUMERIC_OPERATORS: DslOperator[] = ['=', '!=', '<', '>', '<=', '>=']
 // Note: '^' (starts with), '$' (ends with), '!~' (not contains), 'is:null', 'is:notnull'
@@ -69,6 +78,7 @@ export const FILTER_COLUMNS: readonly FilterColumnDef[] = [
     aliases: ['quality', 'q'],
     type: 'numeric',
     operators: NUMERIC_OPERATORS,
+    caseOnly: true,
     commonValues: [
       { value: 100, label: 'Q100' },
       { value: 300, label: 'Q300' },
@@ -81,6 +91,7 @@ export const FILTER_COLUMNS: readonly FilterColumnDef[] = [
     aliases: ['hpo', 'hpo_score', 'similarity'],
     type: 'numeric',
     operators: NUMERIC_OPERATORS,
+    caseOnly: true,
     commonValues: [
       { value: 0.1, label: '0.1' },
       { value: 0.3, label: '0.3' },
@@ -135,14 +146,16 @@ export const FILTER_COLUMNS: readonly FilterColumnDef[] = [
     label: 'Genotype',
     aliases: ['genotype', 'gt'],
     type: 'text',
-    operators: ['=', '!=', '~']
+    operators: ['=', '!=', '~'],
+    caseOnly: true
   },
   {
     key: 'moi',
     label: 'Mode of Inheritance',
     aliases: ['inheritance', 'mode'],
     type: 'categorical',
-    operators: CATEGORICAL_OPERATORS
+    operators: CATEGORICAL_OPERATORS,
+    caseOnly: true
   },
   {
     key: 'transcript',
@@ -198,14 +211,23 @@ export function getCommonValues(nameOrAlias: string): CommonValue[] {
   return findColumn(nameOrAlias)?.commonValues ?? []
 }
 
+/** Whether a column can be filtered in the given view (case-only fields not in cohort). */
+export function isColumnInScope(col: FilterColumnDef, scope: FilterScope): boolean {
+  return scope === 'case' || col.caseOnly !== true
+}
+
 /** Get all column keys and aliases for autocomplete matching */
-export function getColumnSuggestions(partial: string): FilterColumnDef[] {
+export function getColumnSuggestions(
+  partial: string,
+  scope: FilterScope = 'case'
+): FilterColumnDef[] {
   const lower = partial.toLowerCase()
-  if (lower === '') return [...FILTER_COLUMNS]
   return FILTER_COLUMNS.filter(
     (col) =>
-      col.key.toLowerCase().startsWith(lower) ||
-      col.label.toLowerCase().startsWith(lower) ||
-      col.aliases.some((a) => a.toLowerCase().startsWith(lower))
+      isColumnInScope(col, scope) &&
+      (lower === '' ||
+        col.key.toLowerCase().startsWith(lower) ||
+        col.label.toLowerCase().startsWith(lower) ||
+        col.aliases.some((a) => a.toLowerCase().startsWith(lower)))
   ) as FilterColumnDef[]
 }
