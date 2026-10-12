@@ -11,6 +11,7 @@
         hide-details
         label="Genome Build"
         style="max-width: 220px"
+        @update:model-value="unavailableBuild = null"
       />
       <v-select
         v-model="selectedVariantType"
@@ -25,6 +26,19 @@
       />
       <v-spacer />
     </div>
+    <v-alert
+      v-if="unavailableBuild !== null"
+      type="warning"
+      variant="tonal"
+      density="compact"
+      closable
+      class="mx-2 mb-2 flex-grow-0"
+      data-testid="cohort-unavailable-build"
+      @click:close="unavailableBuild = null"
+    >
+      The linked genome build {{ unavailableBuild }} is not in this database. Showing
+      {{ genomeBuild }} instead.
+    </v-alert>
 
     <v-tabs v-model="activeTab" color="primary" density="compact" class="cohort-tabs flex-grow-0">
       <v-tab value="variants">Variants</v-tab>
@@ -66,6 +80,8 @@ import { logService } from '../services/LogService'
 import { formatError } from '../utils/ipc-result'
 import { useUrlParam } from '../composables/useUrlState'
 import { useFilterUrlParam } from '../composables/useViewUrlBindings'
+import { useCohortBuildUrlParam } from '../composables/useCohortBuildUrlParam'
+import type { CarrierTarget } from '../composables/useCarrierTarget'
 import { providePanelResolutionStatus } from '../composables/usePanelResolutionStatus'
 
 // Create and provide filter state for child components (CohortTable, CohortFilterBar)
@@ -87,8 +103,13 @@ providePanelResolutionStatus({
   genomeBuild
 })
 
-// URL state (cohort parity with the case view): filters `f`, variant type
-// `type`; search `q` and sort `sort` are bound by CohortFilterBar / CohortTable.
+// URL state (cohort parity with the case view): genome build `build`, filters
+// `f`, variant type `type`; search `q` and sort `sort` are bound by
+// CohortFilterBar / CohortTable.
+const { unavailableBuild, validateLinkedBuild } = useCohortBuildUrlParam({
+  genomeBuild,
+  availableBuilds
+})
 useFilterUrlParam('cohort', filtersInstance.filters, filtersInstance.selectedImpactPresets)
 useUrlParam({
   route: 'cohort',
@@ -119,17 +140,7 @@ const lastSeenGeneration = ref(dataGeneration.value)
 const burdenMounted = ref(false)
 
 defineEmits<{
-  'navigate-to-case': [
-    payload: {
-      caseId: number
-      chr: string
-      pos: number
-      ref: string
-      alt: string
-      geneSymbol: string | null
-      cdna: string | null
-    }
-  ]
+  'navigate-to-case': [target: CarrierTarget]
   'row-click': [variant: CohortVariant]
   deselect: []
 }>()
@@ -156,6 +167,7 @@ const refresh = async (): Promise<void> => {
 onMounted(async () => {
   try {
     await loadAvailableBuilds()
+    validateLinkedBuild()
   } catch (error) {
     logService.error('Failed to load available genome builds: ' + formatError(error), 'cohort')
   }

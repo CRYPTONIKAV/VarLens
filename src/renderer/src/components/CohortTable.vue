@@ -154,20 +154,11 @@ import { isWebRuntime } from '../utils/runtime-mode'
 import { stripVueProxies } from '../utils/stripVueProxies'
 import { activeMaxCarriers } from '../utils/filters/maxCarriers'
 import { useCapabilityStore } from '../stores/capabilityStore'
+import type { CarrierTarget } from '../composables/useCarrierTarget'
 
 // Emit for navigation and row click
 const emit = defineEmits<{
-  'navigate-to-case': [
-    payload: {
-      caseId: number
-      chr: string
-      pos: number
-      ref: string
-      alt: string
-      geneSymbol: string | null
-      cdna: string | null
-    }
-  ]
+  'navigate-to-case': [target: CarrierTarget]
   'row-click': [variant: CohortVariant]
   deselect: []
 }>()
@@ -540,15 +531,9 @@ const handleExport = (format?: 'csv' | 'xlsx') => {
 }
 
 const handleNavigateToCase = (payload: { caseId: number; item: CohortVariant }) => {
-  emit('navigate-to-case', {
-    caseId: payload.caseId,
-    chr: payload.item.chr,
-    pos: payload.item.pos,
-    ref: payload.item.ref,
-    alt: payload.item.alt,
-    geneSymbol: payload.item.gene_symbol,
-    cdna: payload.item.cdna
-  })
+  const v = payload.item
+  const identity = { chr: v.chr, pos: v.pos, ref: v.ref, alt: v.alt, variantType: v.variant_type }
+  emit('navigate-to-case', { caseId: payload.caseId, ...identity })
 }
 
 // Hydrate annotations for the visible rows (page-change guarded, debounced)

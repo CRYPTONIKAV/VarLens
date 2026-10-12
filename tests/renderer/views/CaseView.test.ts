@@ -52,7 +52,6 @@ vi.mock('../../../src/renderer/src/components/FilterToolbar.vue', () => ({
       filteredCount: { type: Number, default: 0 },
       totalCount: { type: Number, default: 0 },
       hasSort: { type: Boolean, default: false },
-      initialSearch: { type: String, default: undefined },
       columns: { type: Array, default: () => [] },
       columnActiveFilters: { type: Array, default: () => [] }
     },

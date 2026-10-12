@@ -1,61 +1,36 @@
 <script setup lang="ts">
+import { isNavigationFailure, useRouter } from 'vue-router'
 import CohortViewComponent from '../components/CohortView.vue'
 import { useAppState } from '../composables/useAppState'
-import { useApiService } from '../composables/useApiService'
+import { tabForVariantType, type CarrierTarget } from '../composables/useCarrierTarget'
 import type { Variant } from '../../../shared/types/api'
 import type { CohortVariant } from '../../../shared/types/cohort'
 import { logService } from '../services/LogService'
-import { isIpcError, unwrapIpcResult } from '../../../shared/types/errors'
+import { formatError } from '../utils/ipc-result'
 
-const { api } = useApiService()
-const { initialSearch, panelOpen, selectedPanelVariant, cohortViewRef, selectCase } = useAppState()
+const router = useRouter()
+const { carrierTarget, panelOpen, selectedPanelVariant, cohortViewRef } = useAppState()
 
 // cohortViewRef is used as template ref (not detected by vue-tsc from destructured composable)
 void cohortViewRef
 
-async function handleNavigateToCase(payload: {
-  caseId: number
-  chr: string
-  pos: number
-  ref: string
-  alt: string
-  geneSymbol: string | null
-  cdna: string | null
-}): Promise<void> {
-  if (!api) return
-
-  // Build search query from gene symbol and/or cDNA
-  const parts: string[] = []
-  if (payload.geneSymbol != null && payload.geneSymbol !== '') {
-    parts.push(payload.geneSymbol)
-  }
-  if (payload.cdna != null && payload.cdna !== '') {
-    parts.push(payload.cdna)
-  }
-  const variantSearch = parts.length > 0 ? parts.join(' AND ') : undefined
-
-  initialSearch.value = variantSearch
-  let caseName = ''
-
-  // Look up case name
+/**
+ * Open the carrier's case on the variant's own type tab, narrowed to the exact
+ * variant. The URL bindings select the case and tab (and report a case that
+ * no longer exists); the case view's useCarrierTarget does the rest.
+ */
+async function handleNavigateToCase(target: CarrierTarget): Promise<void> {
+  carrierTarget.value = target
   try {
-    const cases = unwrapIpcResult(await api.cases.list())
-    const selectedCase = cases.find((c) => c.id === payload.caseId)
-    if (selectedCase !== undefined) {
-      caseName = selectedCase.name
-    }
+    const failure = await router.push({
+      path: '/case',
+      query: { case: String(target.caseId), tab: tabForVariantType(target.variantType) }
+    })
+    // Cancelled (e.g. an unsaved ACMG draft): the target must not apply later.
+    if (isNavigationFailure(failure)) carrierTarget.value = null
   } catch (error) {
-    logService.error(
-      'Failed to fetch case name: ' +
-        (error instanceof Error
-          ? error.message
-          : isIpcError(error)
-            ? (error.userMessage ?? error.message)
-            : String(error)),
-      'cohort'
-    )
+    logService.error('Navigating to the carrier case failed: ' + formatError(error), 'cohort')
   }
-  selectCase({ caseId: payload.caseId, caseName })
 }
 
 function handleRowClick(variant: Variant | CohortVariant): void {
