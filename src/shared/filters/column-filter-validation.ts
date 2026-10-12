@@ -10,6 +10,7 @@
  */
 import type { ColumnFiltersParam } from '../types/column-filters'
 import { isNullCheckOperator } from './column-null-check'
+import { infoFieldFilterProblem, infoFieldKey } from './info-field-filter'
 
 /**
  * Column-filter keys whose column holds numbers.
@@ -66,11 +67,10 @@ export const NUMERIC_COLUMN_FILTER_KEYS: ReadonlySet<string> = new Set([
 export class ColumnFilterValueError extends Error {
   constructor(
     readonly column: string,
-    readonly value: unknown
+    readonly value: unknown,
+    message = `Invalid numeric value for column filter "${column}": ${JSON.stringify(value)} is not a number`
   ) {
-    super(
-      `Invalid numeric value for column filter "${column}": ${JSON.stringify(value)} is not a number`
-    )
+    super(message)
     this.name = 'ColumnFilterValueError'
   }
 }
@@ -101,6 +101,11 @@ export function assertValidColumnFilterValues(filters: ColumnFiltersParam | unde
   if (filters === undefined) return
 
   for (const [column, filter] of Object.entries(filters)) {
+    if (filter !== undefined && infoFieldKey(column) !== null) {
+      const problem = infoFieldFilterProblem(column, filter)
+      if (problem !== null) throw new ColumnFilterValueError(column, filter.value, problem)
+      continue
+    }
     if (filter === undefined || !NUMERIC_COLUMN_FILTER_KEYS.has(column)) continue
     const { operator, value } = filter
     // Null checks carry no value to validate.
@@ -110,5 +115,23 @@ export function assertValidColumnFilterValues(filters: ColumnFiltersParam | unde
     for (const item of values) {
       if (!isNumericFilterValue(item)) throw new ColumnFilterValueError(column, item)
     }
+  }
+}
+
+/**
+ * Cohort-level queries (cohort listing, association) have no per-variant INFO
+ * values to filter: their aggregation semantics are undefined (#538), so an
+ * `info.<KEY>` filter is refused instead of silently dropped.
+ *
+ * @throws {ColumnFilterValueError} for the first `info.<KEY>` filter.
+ */
+export function assertNoInfoFieldFilters(filters: ColumnFiltersParam | undefined): void {
+  for (const [column, filter] of Object.entries(filters ?? {})) {
+    if (infoFieldKey(column) === null) continue
+    throw new ColumnFilterValueError(
+      column,
+      filter?.value,
+      `INFO field filters (${column}) are only available in the case view`
+    )
   }
 }

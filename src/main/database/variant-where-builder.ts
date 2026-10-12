@@ -10,6 +10,7 @@ import { isExtensionColumnKey } from './variant-extension-registry'
 import { buildNullCheckSql, isNullCheckOperator } from '../../shared/filters/column-null-check'
 import { BASE_SORTABLE_COLUMNS } from './VariantFilterBuilder'
 import {
+  assertNoInfoFieldFilters,
   assertValidColumnFilterValues,
   NUMERIC_COLUMN_FILTER_KEYS
 } from '../../shared/filters/column-filter-validation'
@@ -58,6 +59,7 @@ export function buildBaseWhere(
 ): BuildBaseWhereResult {
   // Same value/column-type check as every other builder on both backends (#447).
   assertValidColumnFilterValues(filters.column_filters)
+  assertNoInfoFieldFilters(filters.column_filters) // no builder here evaluates info.* (#538)
   const conditions: string[] = []
   const params: (string | number)[] = []
   const { baseAlias, scope } = ctx

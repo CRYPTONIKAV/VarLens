@@ -11,6 +11,7 @@
  */
 import type { ColumnFiltersParam } from '../types/column-filters'
 import { resolveExtensionColumnKey } from '../types/variant-extension-registry-data'
+import { assertNoInfoFieldFilters } from './column-filter-validation'
 
 /**
  * Canonical cohort column-filter key → stored `cohort_variant_summary` column.
@@ -67,6 +68,7 @@ export function normalizeCohortColumnFilters(
   filters: ColumnFiltersParam | undefined
 ): ColumnFiltersParam | undefined {
   if (filters === undefined) return undefined
+  assertNoInfoFieldFilters(filters)
   const normalized: ColumnFiltersParam = {}
   const unsupported: string[] = []
   for (const [key, filter] of Object.entries(filters)) {

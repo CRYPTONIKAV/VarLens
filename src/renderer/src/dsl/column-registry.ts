@@ -230,6 +230,13 @@ export const COHORT_ONLY_COLUMNS: readonly FilterColumnDef[] = [
   }
 ]
 
+/**
+ * Operators for `info.<KEY>` fields (custom VCF INFO values, case view only,
+ * #538) besides `is:null` / `is:notnull`. The fields are per case and not in
+ * FILTER_COLUMNS; the parser validates the key against the VCF INFO ID grammar.
+ */
+export const INFO_FIELD_OPERATORS: readonly DslOperator[] = [...NUMERIC_OPERATORS, '~']
+
 /** All known column keys for fast lookup */
 const columnMap = new Map<string, FilterColumnDef>()
 for (const col of FILTER_COLUMNS) {
